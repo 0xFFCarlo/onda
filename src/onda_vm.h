@@ -7,14 +7,42 @@
 #define ONDA_VM_STACK_SIZE 1024
 
 typedef enum onda_op_type {
+  // Arithmetic Operations
   ONDA_OP_ADD,
   ONDA_OP_SUB,
   ONDA_OP_MUL,
   ONDA_OP_DIV,
+  ONDA_OP_MOD,
+  ONDA_OP_INC,
+  ONDA_OP_DEC,
+  // Logical Operations
+  ONDA_OP_AND,
+  ONDA_OP_OR,
+  ONDA_OP_NOT,
+  // Comparison Operations
+  ONDA_OP_EQ,
+  ONDA_OP_NEQ,
+  ONDA_OP_LT,
+  ONDA_OP_GT,
+  ONDA_OP_LTE,
+  ONDA_OP_GTE,
+  // Stack Operations
   ONDA_OP_PUSH_CONST_U8,
   ONDA_OP_PUSH_CONST_U32,
   ONDA_OP_PUSH_CONST_U64,
+  ONDA_OP_SWAP,
+  ONDA_OP_DUP,
+  ONDA_OP_OVER,
+  ONDA_OP_ROT,
+  ONDA_OP_DROP,
+  // Control Flow
+  ONDA_OP_JUMP,
+  ONDA_OP_JUMP_IF_FALSE,
+  ONDA_OP_RETURN,
   ONDA_OP_HALT,
+  // I/O Operations
+  ONDA_OP_PRINT,
+  ONDA_OP_PRINT_STR,
 } onda_op_type_t;
 
 typedef struct onda_vm {

@@ -1,6 +1,7 @@
 #include "onda_vm.h"
 #include "onda_util.h"
 #include <string.h>
+#include <stdio.h>
 
 onda_vm_t *onda_vm_new() {
   onda_vm_t *vm = onda_calloc(1, sizeof(onda_vm_t));
@@ -24,11 +25,33 @@ int onda_vm_run(onda_vm_t *vm) {
   vm->sp = 0;
 
   static void *dispatch_table[] = {
-      [ONDA_OP_HALT] = &&op_halt, [ONDA_OP_ADD] = &&op_add,
-      [ONDA_OP_SUB] = &&op_sub,   [ONDA_OP_MUL] = &&op_mul,
-      [ONDA_OP_DIV] = &&op_div,   [ONDA_OP_PUSH_CONST_U8] = &&op_push_const_u8,
+      [ONDA_OP_HALT] = &&op_halt,
+      [ONDA_OP_ADD] = &&op_add,
+      [ONDA_OP_SUB] = &&op_sub,
+      [ONDA_OP_MUL] = &&op_mul,
+      [ONDA_OP_DIV] = &&op_div,
+      [ONDA_OP_MOD] = &&op_mod,
+      [ONDA_OP_INC] = &&op_inc,
+      [ONDA_OP_DEC] = &&op_dec,
+      [ONDA_OP_AND] = &&op_and,
+      [ONDA_OP_OR] = &&op_or,
+      [ONDA_OP_NOT] = &&op_not,
+      [ONDA_OP_EQ] = &&op_eq,
+      [ONDA_OP_NEQ] = &&op_neq,
+      [ONDA_OP_LT] = &&op_lt,
+      [ONDA_OP_GT] = &&op_gt,
+      [ONDA_OP_LTE] = &&op_lte,
+      [ONDA_OP_GTE] = &&op_gte,
+      [ONDA_OP_PUSH_CONST_U8] = &&op_push_const_u8,
       [ONDA_OP_PUSH_CONST_U32] = &&op_push_const_u32,
       [ONDA_OP_PUSH_CONST_U64] = &&op_push_const_u64,
+      [ONDA_OP_SWAP] = &&op_swap,
+      [ONDA_OP_DUP] = &&op_dup,
+      [ONDA_OP_OVER] = &&op_over,
+      [ONDA_OP_ROT] = &&op_rot,
+      [ONDA_OP_DROP] = &&op_drop,
+      [ONDA_OP_PRINT] = &&op_print,
+      [ONDA_OP_PRINT_STR] = &&op_print_str,
   };
 
 #define DISPATCH() goto *dispatch_table[vm->code[vm->pc++]];
@@ -37,27 +60,9 @@ int onda_vm_run(onda_vm_t *vm) {
 
   uint64_t tmp;
 
-op_push_const_u8:
-  vm->stack[vm->sp++] = vm->code[vm->pc++];
-  DISPATCH();
-op_push_const_u32:
-  tmp = vm->code[vm->pc++];
-  tmp |= (uint32_t)vm->code[vm->pc++] << 8;
-  tmp |= (uint32_t)vm->code[vm->pc++] << 16;
-  tmp |= (uint32_t)vm->code[vm->pc++] << 24;
-  vm->stack[vm->sp++] = tmp;
-  DISPATCH();
-op_push_const_u64:
-  tmp = vm->code[vm->pc++];
-  tmp |= (uint64_t)vm->code[vm->pc++] << 8;
-  tmp |= (uint64_t)vm->code[vm->pc++] << 16;
-  tmp |= (uint64_t)vm->code[vm->pc++] << 24;
-  tmp |= (uint64_t)vm->code[vm->pc++] << 32;
-  tmp |= (uint64_t)vm->code[vm->pc++] << 40;
-  tmp |= (uint64_t)vm->code[vm->pc++] << 48;
-  tmp |= (uint64_t)vm->code[vm->pc++] << 56;
-  vm->stack[vm->sp++] = tmp;
-  DISPATCH();
+///////////////////////////
+// Arithmetic operations
+///////////////////////////
 op_add:
   vm->stack[vm->sp - 2] += vm->stack[vm->sp - 1];
   vm->sp--;
@@ -74,6 +79,111 @@ op_div:
   vm->stack[vm->sp - 2] /= vm->stack[vm->sp - 1];
   vm->sp--;
   DISPATCH();
+op_mod:
+  vm->stack[vm->sp - 2] %= vm->stack[vm->sp - 1];
+  vm->sp--;
+  DISPATCH();
+op_inc:
+  vm->stack[vm->sp - 1]++;
+  DISPATCH();
+op_dec:
+  vm->stack[vm->sp - 1]--;
+  DISPATCH();
+///////////////////////////
+// Logical operations
+///////////////////////////
+op_and:
+  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] && vm->stack[vm->sp - 1];
+  vm->sp--;
+  DISPATCH();
+op_or:
+  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] || vm->stack[vm->sp - 1];
+  vm->sp--;
+  DISPATCH();
+op_not:
+  vm->stack[vm->sp - 1] = !vm->stack[vm->sp - 1];
+  DISPATCH();
+///////////////////////////
+// Comparison operations
+///////////////////////////
+op_eq:
+  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] == vm->stack[vm->sp - 1];
+  vm->sp--;
+  DISPATCH();
+op_neq:
+  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] != vm->stack[vm->sp - 1];
+  vm->sp--;
+  DISPATCH();
+op_lt:
+  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] < vm->stack[vm->sp - 1];
+  vm->sp--;
+  DISPATCH();
+op_gt:
+  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] > vm->stack[vm->sp - 1];
+  vm->sp--;
+  DISPATCH();
+op_lte:
+  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] <= vm->stack[vm->sp - 1];
+  vm->sp--;
+  DISPATCH();
+op_gte:
+  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] >= vm->stack[vm->sp - 1];
+  vm->sp--;
+  DISPATCH();
+///////////////////////////
+// Stack operations
+///////////////////////////
+op_push_const_u8:
+  vm->stack[vm->sp++] = (int8_t)vm->code[vm->pc++];
+  DISPATCH();
+op_push_const_u32:
+  tmp = vm->code[vm->pc++];
+  tmp |= (uint32_t)vm->code[vm->pc++] << 8;
+  tmp |= (uint32_t)vm->code[vm->pc++] << 16;
+  tmp |= (uint32_t)vm->code[vm->pc++] << 24;
+  vm->stack[vm->sp++] = (int32_t)tmp;
+  DISPATCH();
+op_push_const_u64:
+  tmp = vm->code[vm->pc++];
+  tmp |= (uint64_t)vm->code[vm->pc++] << 8;
+  tmp |= (uint64_t)vm->code[vm->pc++] << 16;
+  tmp |= (uint64_t)vm->code[vm->pc++] << 24;
+  tmp |= (uint64_t)vm->code[vm->pc++] << 32;
+  tmp |= (uint64_t)vm->code[vm->pc++] << 40;
+  tmp |= (uint64_t)vm->code[vm->pc++] << 48;
+  tmp |= (uint64_t)vm->code[vm->pc++] << 56;
+  vm->stack[vm->sp++] = (int64_t)tmp;
+  DISPATCH();
+op_swap:
+  tmp = vm->stack[vm->sp - 1];
+  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 2];
+  vm->stack[vm->sp - 2] = tmp;
+  DISPATCH();
+op_dup:
+  vm->stack[vm->sp++] = vm->stack[vm->sp - 1];
+  DISPATCH();
+op_over:
+  vm->stack[vm->sp++] = vm->stack[vm->sp - 2];
+  DISPATCH();
+op_rot:
+  tmp = vm->stack[vm->sp - 1];
+  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 2];
+  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 3];
+  vm->stack[vm->sp - 3] = tmp;
+  DISPATCH();
+op_drop:
+  vm->sp--;
+  DISPATCH();
+op_print:
+  printf("%lld\n", (int64_t)vm->stack[vm->sp - 1]);
+  vm->sp--;
+  DISPATCH();
+op_print_str : {
+  char *str = (char *)vm->stack[vm->sp - 1];
+  printf("%s\n", str);
+  vm->sp--;
+  DISPATCH();
+}
 op_halt:
   return 0;
 }
