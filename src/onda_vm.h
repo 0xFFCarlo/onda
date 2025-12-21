@@ -46,7 +46,7 @@ typedef enum onda_op_type {
 } onda_op_type_t;
 
 typedef struct onda_vm {
-  uint8_t *code;
+  uint8_t* code;
   size_t code_size;
   size_t entry_pc;
   size_t pc;
@@ -55,10 +55,12 @@ typedef struct onda_vm {
   size_t sp;
 } onda_vm_t;
 
-onda_vm_t *onda_vm_new();
-int onda_vm_load_code(onda_vm_t *vm, const uint8_t *code, const size_t entry_pc,
+onda_vm_t* onda_vm_new();
+int onda_vm_load_code(onda_vm_t* vm,
+                      const uint8_t* code,
+                      const size_t entry_pc,
                       const size_t code_size);
-int onda_vm_run(onda_vm_t *vm);
-void onda_vm_free(onda_vm_t *vm);
+int onda_vm_run(onda_vm_t* vm);
+void onda_vm_free(onda_vm_t* vm);
 
 #endif // ONDA_VM_H

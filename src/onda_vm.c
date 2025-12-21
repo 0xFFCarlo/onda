@@ -1,14 +1,19 @@
 #include "onda_vm.h"
-#include "onda_util.h"
-#include <string.h>
-#include <stdio.h>
 
-onda_vm_t *onda_vm_new() {
-  onda_vm_t *vm = onda_calloc(1, sizeof(onda_vm_t));
+#include "onda_std.h"
+#include "onda_util.h"
+
+#include <stdio.h>
+#include <string.h>
+
+onda_vm_t* onda_vm_new() {
+  onda_vm_t* vm = onda_calloc(1, sizeof(onda_vm_t));
   return vm;
 }
 
-int onda_vm_load_code(onda_vm_t *vm, const uint8_t *code, const size_t entry_pc,
+int onda_vm_load_code(onda_vm_t* vm,
+                      const uint8_t* code,
+                      const size_t entry_pc,
                       const size_t code_size) {
   if (vm->code)
     onda_free(vm->code);
@@ -20,11 +25,11 @@ int onda_vm_load_code(onda_vm_t *vm, const uint8_t *code, const size_t entry_pc,
   return 0;
 }
 
-int onda_vm_run(onda_vm_t *vm) {
+int onda_vm_run(onda_vm_t* vm) {
   vm->pc = vm->entry_pc;
   vm->sp = 0;
 
-  static void *dispatch_table[] = {
+  static void* dispatch_table[] = {
       [ONDA_OP_HALT] = &&op_halt,
       [ONDA_OP_ADD] = &&op_add,
       [ONDA_OP_SUB] = &&op_sub,
@@ -54,7 +59,7 @@ int onda_vm_run(onda_vm_t *vm) {
       [ONDA_OP_PRINT_STR] = &&op_print_str,
   };
 
-#define DISPATCH() goto *dispatch_table[vm->code[vm->pc++]];
+#define DISPATCH() goto* dispatch_table[vm->code[vm->pc++]];
 
   DISPATCH();
 
@@ -175,12 +180,11 @@ op_drop:
   vm->sp--;
   DISPATCH();
 op_print:
-  printf("%lld\n", (int64_t)vm->stack[vm->sp - 1]);
+  onda_print_u64((uint64_t)vm->stack[vm->sp - 1]);
   vm->sp--;
   DISPATCH();
 op_print_str : {
-  char *str = (char *)vm->stack[vm->sp - 1];
-  printf("%s\n", str);
+  onda_print_string((char*)vm->stack[vm->sp - 1]);
   vm->sp--;
   DISPATCH();
 }
@@ -188,7 +192,7 @@ op_halt:
   return 0;
 }
 
-void onda_vm_free(onda_vm_t *vm) {
+void onda_vm_free(onda_vm_t* vm) {
   if (vm->code)
     onda_free(vm->code);
   onda_free(vm);

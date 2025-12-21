@@ -1,17 +1,25 @@
 #include "onda_parser.h"
+
 #include "onda_util.h"
 #include "onda_vm.h"
+
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-static inline char curr(onda_lexer_t *lx) { return lx->src[lx->pos]; }
-static inline char nextc(onda_lexer_t *lx) { return lx->src[lx->pos + 1]; }
-static inline bool at_end(onda_lexer_t *lx) { return lx->src[lx->pos] == '\0'; }
+static inline char curr(onda_lexer_t* lx) {
+  return lx->src[lx->pos];
+}
+static inline char nextc(onda_lexer_t* lx) {
+  return lx->src[lx->pos + 1];
+}
+static inline bool at_end(onda_lexer_t* lx) {
+  return lx->src[lx->pos] == '\0';
+}
 
-static inline void advance(onda_lexer_t *lx) {
+static inline void advance(onda_lexer_t* lx) {
   if (!at_end(lx)) {
     if (lx->src[lx->pos] == '\n') {
       lx->line++;
@@ -23,7 +31,7 @@ static inline void advance(onda_lexer_t *lx) {
   }
 }
 
-static void skip_whitespace_and_comments(onda_lexer_t *lx) {
+static void skip_whitespace_and_comments(onda_lexer_t* lx) {
   for (;;) {
     char c = curr(lx);
     if (c == '#') {
@@ -39,7 +47,7 @@ static void skip_whitespace_and_comments(onda_lexer_t *lx) {
 
 // Decode a string literal (without surrounding quotes) into arena memory.
 // Supports escapes: \n \t \r \" \\ . Returns 0 on success.
-static int lex_string(onda_lexer_t *lx, const char **dst, int *dst_len) {
+static int lex_string(onda_lexer_t* lx, const char** dst, int* dst_len) {
   // opening '"' already at curr(lx)
   advance(lx); // skip the opening quote
   size_t start_pos = lx->pos;
@@ -61,12 +69,12 @@ static int lex_string(onda_lexer_t *lx, const char **dst, int *dst_len) {
   size_t end_pos = lx->pos; // position of closing quote
   // Allocate a buffer of worst-case size (every escape becomes 1 char)
   int raw_len = (int)(end_pos - start_pos);
-  char *buf = (char *)onda_calloc(1, (size_t)raw_len + 1);
+  char* buf = (char*)onda_calloc(1, (size_t)raw_len + 1);
   if (!buf)
     return -1;
 
   // Second pass: actually decode
-  const char *src = lx->src + start_pos;
+  const char* src = lx->src + start_pos;
   int si = 0;
   int di = 0;
   while (si < raw_len) {
@@ -107,19 +115,19 @@ static int lex_string(onda_lexer_t *lx, const char **dst, int *dst_len) {
   return 0;
 }
 
-static int64_t parse_number(const char *s, size_t len) {
-  char *tmp = (char *)onda_malloc(len + 1);
+static int64_t parse_number(const char* s, size_t len) {
+  char* tmp = (char*)onda_malloc(len + 1);
   if (!tmp)
     return 0.0;
   memcpy(tmp, s, len);
   tmp[len] = '\0';
-  char *endptr = NULL;
+  char* endptr = NULL;
   int64_t v = strtoll(tmp, &endptr, 10);
   onda_free(tmp);
   return v;
 }
 
-static int lex_number(onda_lexer_t *lx) {
+static int lex_number(onda_lexer_t* lx) {
   size_t start = lx->pos;
 
   if (curr(lx) == '-' && isdigit((unsigned char)nextc(lx)))
@@ -137,7 +145,7 @@ static int lex_number(onda_lexer_t *lx) {
   return (int)(lx->pos - start);
 }
 
-void onda_token_next(onda_lexer_t *lexer, onda_token_t *out_token) {
+void onda_token_next(onda_lexer_t* lexer, onda_token_t* out_token) {
   out_token->start = lexer->src + lexer->pos;
   out_token->len = 1;
   if (at_end(lexer)) {
@@ -254,25 +262,25 @@ void onda_token_next(onda_lexer_t *lexer, onda_token_t *out_token) {
   return;
 }
 
-static int cmp_strptr(const void *a, const void *b) {
-  const char *sa = *(const char *const *)a;
-  const char *sb = *(const char *const *)b;
+static int cmp_strptr(const void* a, const void* b) {
+  const char* sa = *(const char* const*)a;
+  const char* sb = *(const char* const*)b;
   return strcmp(sa, sb);
 }
 
 typedef struct {
-  const char *name;
+  const char* name;
   uint8_t opcode;
 } onda_keyword_t;
 
 typedef struct {
-  const char *s;
+  const char* s;
   size_t len;
 } str_slice_t;
 
-static int cmp_key_kw(const void *a, const void *b) {
-  const str_slice_t *k = (const str_slice_t *)a;
-  const onda_keyword_t *e = (const onda_keyword_t *)b;
+static int cmp_key_kw(const void* a, const void* b) {
+  const str_slice_t* k = (const str_slice_t*)a;
+  const onda_keyword_t* e = (const onda_keyword_t*)b;
 
   size_t elen = strlen(e->name);
   size_t m = (k->len < elen) ? k->len : elen;
@@ -289,8 +297,10 @@ static int cmp_key_kw(const void *a, const void *b) {
   return 0;
 }
 
-void onda_parse(const char *source, uint8_t *code, size_t *code_size,
-                size_t *entry_pc) {
+void onda_parse(const char* source,
+                uint8_t* code,
+                size_t* code_size,
+                size_t* entry_pc) {
   onda_lexer_t lexer = {
       .src = source,
       .pos = 0,
@@ -299,18 +309,30 @@ void onda_parse(const char *source, uint8_t *code, size_t *code_size,
   };
 
   static const uint8_t oper_to_code_map[] = {
-      [OPERATOR_ADD] = ONDA_OP_ADD,      [OPERATOR_SUBTRACT] = ONDA_OP_SUB,
-      [OPERATOR_MULTIPLY] = ONDA_OP_MUL, [OPERATOR_DIVIDE] = ONDA_OP_DIV,
-      [OPERATOR_MODULO] = ONDA_OP_MOD,   [OPERATOR_NOT] = ONDA_OP_NOT,
-      [OPERATOR_EQUAL] = ONDA_OP_EQ,     [OPERATOR_NOT_EQUAL] = ONDA_OP_NEQ,
-      [OPERATOR_LESS] = ONDA_OP_LT,      [OPERATOR_LESS_EQUAL] = ONDA_OP_LTE,
-      [OPERATOR_GREATER] = ONDA_OP_GT,   [OPERATOR_GREATER_EQUAL] = ONDA_OP_GTE,
+      [OPERATOR_ADD] = ONDA_OP_ADD,
+      [OPERATOR_SUBTRACT] = ONDA_OP_SUB,
+      [OPERATOR_MULTIPLY] = ONDA_OP_MUL,
+      [OPERATOR_DIVIDE] = ONDA_OP_DIV,
+      [OPERATOR_MODULO] = ONDA_OP_MOD,
+      [OPERATOR_NOT] = ONDA_OP_NOT,
+      [OPERATOR_EQUAL] = ONDA_OP_EQ,
+      [OPERATOR_NOT_EQUAL] = ONDA_OP_NEQ,
+      [OPERATOR_LESS] = ONDA_OP_LT,
+      [OPERATOR_LESS_EQUAL] = ONDA_OP_LTE,
+      [OPERATOR_GREATER] = ONDA_OP_GT,
+      [OPERATOR_GREATER_EQUAL] = ONDA_OP_GTE,
   };
 
   static const onda_keyword_t keywords[] = {
-      {".", ONDA_OP_PRINT},   {".s", ONDA_OP_PRINT_STR}, {"and", ONDA_OP_AND},
-      {"drop", ONDA_OP_DROP}, {"dup", ONDA_OP_DUP},      {"halt", ONDA_OP_HALT},
-      {"or", ONDA_OP_OR},     {"over", ONDA_OP_OVER},    {"rot", ONDA_OP_ROT},
+      {".", ONDA_OP_PRINT},
+      {".s", ONDA_OP_PRINT_STR},
+      {"and", ONDA_OP_AND},
+      {"drop", ONDA_OP_DROP},
+      {"dup", ONDA_OP_DUP},
+      {"halt", ONDA_OP_HALT},
+      {"or", ONDA_OP_OR},
+      {"over", ONDA_OP_OVER},
+      {"rot", ONDA_OP_ROT},
       {"swap", ONDA_OP_SWAP},
   };
 
@@ -322,7 +344,9 @@ void onda_parse(const char *source, uint8_t *code, size_t *code_size,
     if (tok.type == TOKEN_EOF) {
       break;
     } else if (tok.type == TOKEN_INVALID) {
-      fprintf(stderr, "Lexer error at line %lu, column %lu\n", lexer.line,
+      fprintf(stderr,
+              "Lexer error at line %lu, column %lu\n",
+              lexer.line,
               lexer.column);
       return;
     }
@@ -364,7 +388,7 @@ void onda_parse(const char *source, uint8_t *code, size_t *code_size,
       code[pc++] = oper_to_code_map[tok.subtype];
       break;
     case TOKEN_STRING: {
-      char *str_data = onda_malloc(tok.len + 1);
+      char* str_data = onda_malloc(tok.len + 1);
       memcpy(str_data, tok.start, tok.len);
       str_data[tok.len] = '\0';
       code[pc++] = ONDA_OP_PUSH_CONST_U64;
@@ -381,9 +405,12 @@ void onda_parse(const char *source, uint8_t *code, size_t *code_size,
       str_slice_t k = {.s = tok.start, .len = tok.len};
 
       // Check if it is a keyword
-      const onda_keyword_t *hit =
-          bsearch(&k, keywords, sizeof(keywords) / sizeof(keywords[0]),
-                  sizeof(keywords[0]), cmp_key_kw);
+      const onda_keyword_t* hit =
+          bsearch(&k,
+                  keywords,
+                  sizeof(keywords) / sizeof(keywords[0]),
+                  sizeof(keywords[0]),
+                  cmp_key_kw);
 
       if (hit) {
         code[pc++] = hit->opcode;
@@ -391,14 +418,20 @@ void onda_parse(const char *source, uint8_t *code, size_t *code_size,
       }
 
       // TODO: check if it is a defined word in a dictionary
-      fprintf(stderr, "Unknown word '%.*s' at line %lu, column %lu\n",
-              (int)tok.len, tok.start, lexer.line, lexer.column);
+      fprintf(stderr,
+              "Unknown word '%.*s' at line %lu, column %lu\n",
+              (int)tok.len,
+              tok.start,
+              lexer.line,
+              lexer.column);
       return;
 
       break;
     }
     default:
-      fprintf(stderr, "Unexpected token at line %lu, column %lu\n", lexer.line,
+      fprintf(stderr,
+              "Unexpected token at line %lu, column %lu\n",
+              lexer.line,
               lexer.column);
       return;
     }
