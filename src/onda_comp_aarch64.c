@@ -5,10 +5,13 @@
 #include "onda_vm.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #define ONDA_MCODE_CAPACITY_INIT 512
 #define ONDA_MAX_OP_INSTR_COUNT  5 // max instructions per opcode
 
+#define AARCH64_SAVE_SP_X20      0x910003F4 // mov x20, sp
+#define AARCH64_RESTORE_SP_X20   0x9100029F // mov sp, x20
 #define AARCH64_PUSH_X0_STACK    0xF81F0FE0 // str x0, [sp, #-16]!
 #define AARCH64_POP_X0_STACK     0xF84107E0 // ldr x0, [sp], #16
 #define AARCH64_POP_X1_STACK     0xF84107E1 // ldr x1, [sp], #16
@@ -58,6 +61,10 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
   uint32_t* mcode = onda_malloc(ONDA_MCODE_CAPACITY_INIT);
   size_t mcode_capacity = ONDA_MCODE_CAPACITY_INIT;
   size_t mcode_size = 0;
+  uint16_t lo0, hi0, lo1, hi1;
+
+  // Prologue: save sp
+  mcode[mcode_size++] = AARCH64_SAVE_SP_X20;
 
   while (pos < bytecode_size) {
 
@@ -70,37 +77,32 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
     const uint8_t opcode = bytecode[pos++];
     switch (opcode) {
     case ONDA_OP_PUSH_CONST_U8: {
-      const uint8_t imm = bytecode[pos++];
       mcode[mcode_size++] = AARCH64_PUSH_X0_STACK;
-      mcode[mcode_size++] = a64_movz_x(0, imm, 0);
+      mcode[mcode_size++] = a64_movz_x(0, bytecode[pos++], 0);
     } break;
     case ONDA_OP_PUSH_CONST_U32: {
-      uint16_t lo = bytecode[pos++];
-      lo |= bytecode[pos++] << 8;
-      uint16_t hi = bytecode[pos++];
-      hi |= bytecode[pos++] << 8;
+      memcpy(&lo0, &bytecode[pos], 2);
+      memcpy(&hi0, &bytecode[pos + 2], 2);
+      pos += 4;
       mcode[mcode_size++] = AARCH64_PUSH_X0_STACK;
-      mcode[mcode_size++] = a64_movz_x(0, lo, 0);
-      if (hi)
-        mcode[mcode_size++] = a64_movk_x(0, hi, 16);
+      mcode[mcode_size++] = a64_movz_x(0, lo0, 0);
+      if (hi0)
+        mcode[mcode_size++] = a64_movk_x(0, hi0, 16);
     } break;
     case ONDA_OP_PUSH_CONST_U64: {
-      uint16_t hw0 = bytecode[pos++];
-      hw0 |= bytecode[pos++] << 8;
-      uint16_t hw1 = bytecode[pos++];
-      hw1 |= bytecode[pos++] << 8;
-      uint16_t hw2 = bytecode[pos++];
-      hw2 |= bytecode[pos++] << 8;
-      uint16_t hw3 = bytecode[pos++];
-      hw3 |= bytecode[pos++] << 8;
+      memcpy(&lo0, &bytecode[pos], 2);
+      memcpy(&hi0, &bytecode[pos + 2], 2);
+      memcpy(&lo1, &bytecode[pos + 4], 2);
+      memcpy(&hi1, &bytecode[pos + 6], 2);
+      pos += 8;
       mcode[mcode_size++] = AARCH64_PUSH_X0_STACK;
-      mcode[mcode_size++] = a64_movz_x(0, hw0, 0);
-      if (hw1)
-        mcode[mcode_size++] = a64_movk_x(0, hw1, 16);
-      if (hw2)
-        mcode[mcode_size++] = a64_movk_x(0, hw2, 32);
-      if (hw3)
-        mcode[mcode_size++] = a64_movk_x(0, hw3, 48);
+      mcode[mcode_size++] = a64_movz_x(0, lo0, 0);
+      if (hi0)
+        mcode[mcode_size++] = a64_movk_x(0, hi0, 16);
+      if (lo1)
+        mcode[mcode_size++] = a64_movk_x(0, lo1, 32);
+      if (hi1)
+        mcode[mcode_size++] = a64_movk_x(0, hi1, 48);
     } break;
     case ONDA_OP_ADD:
       mcode[mcode_size++] = AARCH64_POP_X1_STACK;
@@ -211,6 +213,7 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       mcode[mcode_size++] = AARCH64_POP_X0_STACK;
     } break;
     case ONDA_OP_HALT:
+      mcode[mcode_size++] = AARCH64_RESTORE_SP_X20;
       mcode[mcode_size++] = AARCH64_RET;
       break;
     default:

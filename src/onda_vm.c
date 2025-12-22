@@ -65,28 +65,26 @@ int onda_vm_run(onda_vm_t* vm) {
 
   uint64_t tmp;
 
-///////////////////////////
 // Arithmetic operations
-///////////////////////////
 op_add:
-  vm->stack[vm->sp - 2] += vm->stack[vm->sp - 1];
   vm->sp--;
+  vm->stack[vm->sp - 1] += vm->stack[vm->sp];
   DISPATCH();
 op_sub:
-  vm->stack[vm->sp - 2] -= vm->stack[vm->sp - 1];
   vm->sp--;
+  vm->stack[vm->sp - 1] -= vm->stack[vm->sp];
   DISPATCH();
 op_mul:
-  vm->stack[vm->sp - 2] *= vm->stack[vm->sp - 1];
   vm->sp--;
+  vm->stack[vm->sp - 1] *= vm->stack[vm->sp];
   DISPATCH();
 op_div:
-  vm->stack[vm->sp - 2] /= vm->stack[vm->sp - 1];
   vm->sp--;
+  vm->stack[vm->sp - 1] /= vm->stack[vm->sp];
   DISPATCH();
 op_mod:
-  vm->stack[vm->sp - 2] %= vm->stack[vm->sp - 1];
   vm->sp--;
+  vm->stack[vm->sp - 1] %= vm->stack[vm->sp];
   DISPATCH();
 op_inc:
   vm->stack[vm->sp - 1]++;
@@ -94,69 +92,58 @@ op_inc:
 op_dec:
   vm->stack[vm->sp - 1]--;
   DISPATCH();
-///////////////////////////
+
 // Logical operations
-///////////////////////////
 op_and:
-  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] && vm->stack[vm->sp - 1];
   vm->sp--;
+  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] && vm->stack[vm->sp];
   DISPATCH();
 op_or:
-  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] || vm->stack[vm->sp - 1];
   vm->sp--;
+  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] || vm->stack[vm->sp];
   DISPATCH();
 op_not:
   vm->stack[vm->sp - 1] = !vm->stack[vm->sp - 1];
   DISPATCH();
-///////////////////////////
+
 // Comparison operations
-///////////////////////////
 op_eq:
-  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] == vm->stack[vm->sp - 1];
   vm->sp--;
+  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] == vm->stack[vm->sp];
   DISPATCH();
 op_neq:
-  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] != vm->stack[vm->sp - 1];
   vm->sp--;
+  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] != vm->stack[vm->sp];
   DISPATCH();
 op_lt:
-  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] < vm->stack[vm->sp - 1];
   vm->sp--;
+  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] < vm->stack[vm->sp];
   DISPATCH();
 op_gt:
-  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] > vm->stack[vm->sp - 1];
   vm->sp--;
+  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] > vm->stack[vm->sp];
   DISPATCH();
 op_lte:
-  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] <= vm->stack[vm->sp - 1];
   vm->sp--;
+  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] <= vm->stack[vm->sp];
   DISPATCH();
 op_gte:
-  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 2] >= vm->stack[vm->sp - 1];
   vm->sp--;
+  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] >= vm->stack[vm->sp];
   DISPATCH();
-///////////////////////////
+
 // Stack operations
-///////////////////////////
 op_push_const_u8:
   vm->stack[vm->sp++] = (int8_t)vm->code[vm->pc++];
   DISPATCH();
 op_push_const_u32:
-  tmp = vm->code[vm->pc++];
-  tmp |= (uint32_t)vm->code[vm->pc++] << 8;
-  tmp |= (uint32_t)vm->code[vm->pc++] << 16;
-  tmp |= (uint32_t)vm->code[vm->pc++] << 24;
+  memcpy(&tmp, &vm->code[vm->pc], 4);
+  vm->pc += 4;
   vm->stack[vm->sp++] = (int32_t)tmp;
   DISPATCH();
 op_push_const_u64:
-  tmp = vm->code[vm->pc++];
-  tmp |= (uint64_t)vm->code[vm->pc++] << 8;
-  tmp |= (uint64_t)vm->code[vm->pc++] << 16;
-  tmp |= (uint64_t)vm->code[vm->pc++] << 24;
-  tmp |= (uint64_t)vm->code[vm->pc++] << 32;
-  tmp |= (uint64_t)vm->code[vm->pc++] << 40;
-  tmp |= (uint64_t)vm->code[vm->pc++] << 48;
-  tmp |= (uint64_t)vm->code[vm->pc++] << 56;
+  memcpy(&tmp, &vm->code[vm->pc], 8);
+  vm->pc += 8;
   vm->stack[vm->sp++] = (int64_t)tmp;
   DISPATCH();
 op_swap:
@@ -180,12 +167,10 @@ op_drop:
   vm->sp--;
   DISPATCH();
 op_print:
-  onda_print_u64((uint64_t)vm->stack[vm->sp - 1]);
-  vm->sp--;
+  onda_print_u64((uint64_t)vm->stack[--vm->sp]);
   DISPATCH();
 op_print_str : {
-  onda_print_string((char*)vm->stack[vm->sp - 1]);
-  vm->sp--;
+  onda_print_string((char*)vm->stack[--vm->sp]);
   DISPATCH();
 }
 op_halt:
