@@ -3,14 +3,15 @@
 #include "onda_std.h"
 #include "onda_util.h"
 #include "onda_vm.h"
+
 #include <stdio.h>
 
 #define ONDA_MCODE_CAPACITY_INIT 512
 #define ONDA_MAX_OP_INSTR_COUNT  5 // max instructions per opcode
 
-#define AARCH64_PUSH_X0_STACK   0xF81F0FE0  // str x0, [sp, #-16]!
-#define AARCH64_POP_X0_STACK    0xF84107E0  // ldr x0, [sp], #16
-#define AARCH64_POP_X1_STACK    0xF84107E1  // ldr x1, [sp], #16
+#define AARCH64_PUSH_X0_STACK    0xF81F0FE0 // str x0, [sp, #-16]!
+#define AARCH64_POP_X0_STACK     0xF84107E0 // ldr x0, [sp], #16
+#define AARCH64_POP_X1_STACK     0xF84107E1 // ldr x1, [sp], #16
 #define AARCH64_STORE_X0_STACK   0xF90003E0 // str x0, [sp]
 #define AARCH64_LOAD_X1_STACK    0xF94003E1 // ldr x1, [sp]
 #define AARCH64_RET              0xD65F03C0 // ret
@@ -198,6 +199,7 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       mcode[mcode_size++] = a64_movk_x(16, (addr >> 32) & 0xFFFF, 32);
       mcode[mcode_size++] = a64_movk_x(16, (addr >> 48) & 0xFFFF, 48);
       mcode[mcode_size++] = 0xD63F0200; // blr x16
+      mcode[mcode_size++] = AARCH64_POP_X0_STACK;
     } break;
     case ONDA_OP_PRINT_STR: {
       const uint64_t addr = (uint64_t)(uintptr_t)&onda_print_string;
@@ -206,6 +208,7 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       mcode[mcode_size++] = a64_movk_x(16, (addr >> 32) & 0xFFFF, 32);
       mcode[mcode_size++] = a64_movk_x(16, (addr >> 48) & 0xFFFF, 48);
       mcode[mcode_size++] = 0xD63F0200; // blr x16
+      mcode[mcode_size++] = AARCH64_POP_X0_STACK;
     } break;
     case ONDA_OP_HALT:
       mcode[mcode_size++] = AARCH64_RET;
