@@ -11,7 +11,9 @@
 #define ONDA_MAX_OP_INSTR_COUNT  5 // max instructions per opcode
 
 #define AARCH64_SAVE_SP_X20      0x910003F4 // mov x20, sp
+#define AARCH64_SAVE_LR_x19      0xAA1E03F3 // mov x19, x30
 #define AARCH64_RESTORE_SP_X20   0x9100029F // mov sp, x20
+#define AARCH64_RESTORE_LR_x19   0xAA1303FE // mov x30, x19
 #define AARCH64_PUSH_X0_STACK    0xF81F0FE0 // str x0, [sp, #-16]!
 #define AARCH64_POP_X0_STACK     0xF84107E0 // ldr x0, [sp], #16
 #define AARCH64_POP_X1_STACK     0xF84107E1 // ldr x1, [sp], #16
@@ -63,7 +65,8 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
   size_t mcode_size = 0;
   uint16_t lo0, hi0, lo1, hi1;
 
-  // Prologue: save sp
+  // Prologue: save lr and sp
+  mcode[mcode_size++] = AARCH64_SAVE_LR_x19;
   mcode[mcode_size++] = AARCH64_SAVE_SP_X20;
 
   while (pos < bytecode_size) {
@@ -213,6 +216,7 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       mcode[mcode_size++] = AARCH64_POP_X0_STACK;
     } break;
     case ONDA_OP_HALT:
+      mcode[mcode_size++] = AARCH64_RESTORE_LR_x19;
       mcode[mcode_size++] = AARCH64_RESTORE_SP_X20;
       mcode[mcode_size++] = AARCH64_RET;
       break;

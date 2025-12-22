@@ -145,121 +145,104 @@ static int lex_number(onda_lexer_t* lx) {
   return (int)(lx->pos - start);
 }
 
-void onda_token_next(onda_lexer_t* lexer, onda_token_t* out_token) {
-  out_token->start = lexer->src + lexer->pos;
-  out_token->len = 1;
+static inline void tok1(onda_lexer_t* l, onda_token_t* t, int type) {
+  t->type = type;
+  t->len = 1;
+  advance(l);
+}
+
+static inline void tokop1(onda_lexer_t* l, onda_token_t* t, int subtype) {
+  t->type = TOKEN_OPERATOR;
+  t->subtype = subtype;
+  t->len = 1;
+  advance(l);
+}
+
+static inline void tokop2_if(onda_lexer_t* l,
+                             onda_token_t* t,
+                             char expect,
+                             int one_subtype,
+                             int two_subtype) {
+  t->type = TOKEN_OPERATOR;
+  t->subtype = one_subtype;
+  t->len = 1;
+  if (nextc(l) == expect) {
+    t->subtype = two_subtype;
+    t->len = 2;
+    advance(l);
+  }
+  advance(l);
+}
+
+void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
   if (at_end(lexer)) {
-    out_token->type = TOKEN_EOF;
+    t->type = TOKEN_EOF;
+    t->start = lexer->src + lexer->pos;
+    t->len = 0;
     return;
   }
 
-  const char c = curr(lexer);
+  t->start = lexer->src + lexer->pos;
+  t->len = 1;
+
+  const unsigned char c = (unsigned char)curr(lexer);
   switch (c) {
   case ':':
-    out_token->type = TOKEN_COLON;
-    advance(lexer);
-    return;
+    return tok1(lexer, t, TOKEN_COLON);
   case ';':
-    out_token->type = TOKEN_SEMICOLON;
-    advance(lexer);
-    return;
+    return tok1(lexer, t, TOKEN_SEMICOLON);
+
   case '"': {
-    int rc = lex_string(lexer, &out_token->start, &out_token->len);
-    if (rc != 0) {
-      out_token->type = TOKEN_INVALID;
-      out_token->start = lexer->src + lexer->pos; // update start to current pos
-      out_token->len = 0;
-      return;
-    }
-    out_token->type = TOKEN_STRING;
+    int rc = lex_string(lexer, &t->start, &t->len);
+    if (rc) {
+      t->type = TOKEN_INVALID;
+      t->start = lexer->src + lexer->pos;
+      t->len = 0;
+    } else
+      t->type = TOKEN_STRING;
     return;
   }
+
   case '+':
-    out_token->type = TOKEN_OPERATOR;
-    out_token->subtype = OPERATOR_ADD;
-    advance(lexer);
-    return;
-  case '-':
-    // Check if it is a unary minus from a number or
-    // a minus operator
-    if (!isdigit((unsigned char)nextc(lexer))) {
-      out_token->type = TOKEN_OPERATOR;
-      out_token->subtype = OPERATOR_SUBTRACT;
-      advance(lexer);
-      return;
-    }
-    break;
+    return tokop1(lexer, t, OPERATOR_ADD);
   case '*':
-    out_token->type = TOKEN_OPERATOR;
-    out_token->subtype = OPERATOR_MULTIPLY;
-    advance(lexer);
-    return;
+    return tokop1(lexer, t, OPERATOR_MULTIPLY);
   case '/':
-    out_token->type = TOKEN_OPERATOR;
-    out_token->subtype = OPERATOR_DIVIDE;
-    advance(lexer);
-    return;
+    return tokop1(lexer, t, OPERATOR_DIVIDE);
   case '%':
-    out_token->type = TOKEN_OPERATOR;
-    out_token->subtype = OPERATOR_MODULO;
-    advance(lexer);
-    return;
+    return tokop1(lexer, t, OPERATOR_MODULO);
+
+  case '-':
+    if (!isdigit((unsigned char)nextc(lexer)))
+      return tokop1(lexer, t, OPERATOR_SUBTRACT);
+    break;
+
   case '!':
-    out_token->type = TOKEN_OPERATOR; // ! and !=
-    out_token->subtype = OPERATOR_NOT;
-    if (nextc(lexer) == '=') {
-      out_token->len = 2;
-      out_token->subtype = OPERATOR_NOT_EQUAL;
-      advance(lexer);
-    }
-    advance(lexer);
-    return;
+    return tokop2_if(lexer, t, '=', OPERATOR_NOT, OPERATOR_NOT_EQUAL);
   case '=':
-    out_token->type = TOKEN_OPERATOR; // ==
-    if (nextc(lexer) == '=') {
-      out_token->len = 2;
-      out_token->subtype = OPERATOR_EQUAL; // == operator
-      advance(lexer);
-    }
-    advance(lexer);
-    return;
+    return tokop2_if(lexer,
+                     t,
+                     '=',
+                     /*unused*/ 0,
+                     OPERATOR_EQUAL); // see note below
   case '<':
-    out_token->type = TOKEN_OPERATOR; // < and <=
-    out_token->subtype = OPERATOR_LESS;
-    if (nextc(lexer) == '=') {
-      out_token->len = 2;
-      out_token->subtype = OPERATOR_LESS_EQUAL; // <= operator
-      advance(lexer);
-    }
-    advance(lexer);
-    return;
+    return tokop2_if(lexer, t, '=', OPERATOR_LESS, OPERATOR_LESS_EQUAL);
   case '>':
-    out_token->type = TOKEN_OPERATOR; // > and >=
-    out_token->subtype = OPERATOR_GREATER;
-    if (nextc(lexer) == '=') {
-      out_token->len = 2;
-      out_token->subtype = OPERATOR_GREATER_EQUAL; // >= operator
-      advance(lexer);
-    }
-    advance(lexer);
+    return tokop2_if(lexer, t, '=', OPERATOR_GREATER, OPERATOR_GREATER_EQUAL);
+  }
+
+  if (isdigit(c) || (c == '-' && isdigit((unsigned char)nextc(lexer)))) {
+    t->type = TOKEN_NUMBER;
+    t->len = lex_number(lexer);
+    t->number = parse_number(t->start, t->len);
     return;
   }
 
-  if (isdigit(c) || (c == '-' && isdigit(nextc(lexer)))) {
-    out_token->type = TOKEN_NUMBER;
-    out_token->len = lex_number(lexer);
-    out_token->number = parse_number(out_token->start, out_token->len);
-    return;
-  }
-
-  // Parse identifier/word
-  out_token->type = TOKEN_WORD;
+  t->type = TOKEN_WORD;
   size_t start_pos = lexer->pos;
-  // until first whitespace
   while (!at_end(lexer) && !isspace((unsigned char)curr(lexer)))
     advance(lexer);
-  out_token->len = (int)(lexer->pos - start_pos);
-  return;
+  t->len = (int)(lexer->pos - start_pos);
 }
 
 static int cmp_strptr(const void* a, const void* b) {
