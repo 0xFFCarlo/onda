@@ -1,3 +1,3 @@
 all:
 		mkdir -p bin
-		gcc ./src/*.c -o bin/onda
+		gcc -g -O0 ./src/*.c -o bin/onda

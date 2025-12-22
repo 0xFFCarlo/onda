@@ -8,10 +8,10 @@
 #define ONDA_MCODE_CAPACITY_INIT 512
 #define ONDA_MAX_OP_INSTR_COUNT  5 // max instructions per opcode
 
-#define AARCH64_PUSH_X0_STACK    0xF81F8FE0 // str x0, [sp, #-8]!
+#define AARCH64_PUSH_X0_STACK   0xF81F0FE0  // str x0, [sp, #-16]!
+#define AARCH64_POP_X0_STACK    0xF84107E0  // ldr x0, [sp], #16
+#define AARCH64_POP_X1_STACK    0xF84107E1  // ldr x1, [sp], #16
 #define AARCH64_STORE_X0_STACK   0xF90003E0 // str x0, [sp]
-#define AARCH64_POP_X0_STACK     0xF84087E0 // ldr x0, [sp], #8
-#define AARCH64_POP_X1_STACK     0xF84087E1 // ldr x1, [sp], #8
 #define AARCH64_LOAD_X1_STACK    0xF94003E1 // ldr x1, [sp]
 #define AARCH64_RET              0xD65F03C0 // ret
 #define AARCH64_MOV_X0_X1        0xAA0103E0 // mov x0, x1
@@ -187,6 +187,7 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       mcode[mcode_size++] = 0xF90007E1; // str x1, [sp, #8]
       mcode[mcode_size++] = AARCH64_STORE_X0_STACK;
       mcode[mcode_size++] = AARCH64_MOV_X0_X2;
+      break;
     case ONDA_OP_DROP:
       mcode[mcode_size++] = AARCH64_POP_X0_STACK;
       break;
