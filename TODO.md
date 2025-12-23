@@ -1,0 +1,9 @@
+- jmp and jmp_if instructions should support labels as targets
+- test jmp, jmp_if, labels in vm
+- test jmp, jmp_if, labels in aarch64 compiler
+- words definition
+- call words / inline words
+- call c functions:
+  - last argument is number of arguments
+  - vm: libffi
+  - aarch64: pass args in x0-x7

@@ -55,6 +55,8 @@ int onda_vm_run(onda_vm_t* vm) {
       [ONDA_OP_OVER] = &&op_over,
       [ONDA_OP_ROT] = &&op_rot,
       [ONDA_OP_DROP] = &&op_drop,
+      [ONDA_OP_JUMP] = &&op_jmp,
+      [ONDA_OP_JUMP_IF] = &&op_jmp_if,
       [ONDA_OP_PRINT] = &&op_print,
       [ONDA_OP_PRINT_STR] = &&op_print_str,
   };
@@ -64,6 +66,7 @@ int onda_vm_run(onda_vm_t* vm) {
   DISPATCH();
 
   uint64_t tmp;
+  uint32_t jmp_target;
 
 // Arithmetic operations
 op_add:
@@ -165,6 +168,16 @@ op_rot:
   DISPATCH();
 op_drop:
   vm->sp--;
+  DISPATCH();
+op_jmp:
+  memcpy(&jmp_target, &vm->code[vm->pc], 4);
+  vm->pc = jmp_target;
+  DISPATCH();
+op_jmp_if:
+  memcpy(&jmp_target, &vm->code[vm->pc], 4);
+  vm->pc += 2;
+  if (vm->stack[--vm->sp])
+    vm->pc = jmp_target;
   DISPATCH();
 op_print:
   onda_print_u64((uint64_t)vm->stack[--vm->sp]);

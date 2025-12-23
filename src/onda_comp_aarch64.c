@@ -7,8 +7,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define ONDA_MCODE_CAPACITY_INIT 512
-#define ONDA_MAX_OP_INSTR_COUNT  6 // max instructions per opcode
+#define ONDA_MCODE_INIT_CAP     512
+#define ONDA_MAX_OP_INSTR_COUNT 6 // max instructions per opcode
 
 #define AA64_SAVE_SP_X20      0x910003F4 // mov x20, sp
 #define AA64_SAVE_LR_x19      0xAA1E03F3 // mov x19, x30
@@ -61,10 +61,16 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
                          uint8_t** out_machine_code,
                          size_t* out_machine_code_size) {
   int pos = 0;
-  uint32_t* mcode = onda_malloc(ONDA_MCODE_CAPACITY_INIT);
-  size_t mcode_capacity = ONDA_MCODE_CAPACITY_INIT;
+  uint32_t* mcode = onda_malloc(ONDA_MCODE_INIT_CAP * sizeof(uint32_t));
+  int32_t* bcode_to_mcode = onda_malloc(bytecode_size * sizeof(int32_t));
+  uint32_t* jmp_patch_list = NULL;
+  size_t jmp_patch_count = 0;
+  size_t mcode_capacity = ONDA_MCODE_INIT_CAP;
   size_t mcode_size = 0;
   uint16_t lo0, hi0, lo1, hi1;
+  uint32_t jmp_target;
+
+  memset(bcode_to_mcode, -1, bytecode_size * sizeof(int32_t));
 
 #define EMIT(a) mcode[mcode_size++] = (a)
 #define EMIT2(a, b)                                                            \
@@ -84,6 +90,9 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       mcode_capacity *= 2;
       mcode = onda_realloc(mcode, mcode_capacity);
     }
+
+    // Store Bytecode to machine code mapping, for patching jumps later
+    bcode_to_mcode[pos] = mcode_size;
 
     const uint8_t opcode = bytecode[pos++];
     switch (opcode) {
@@ -178,6 +187,30 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
     case ONDA_OP_DROP:
       EMIT(AA64_POP_X0_STACK);
       break;
+    case ONDA_OP_JUMP: {
+      memcpy(&jmp_target, &bytecode[pos], 4);
+      int32_t jmp_offset =
+          (int32_t)(bcode_to_mcode[jmp_target] - (mcode_size + 1));
+      if (bcode_to_mcode[jmp_target] == -1) {
+        jmp_patch_list = onda_realloc(jmp_patch_list,
+                                      (jmp_patch_count + 1) * sizeof(uint32_t));
+        jmp_patch_list[jmp_patch_count++] = pos - 1;
+      }
+      pos += 4;
+      EMIT(0x94000000 | ((uint32_t)jmp_offset & 0x03FFFFFF)); // b jmp_offset
+    } break;
+    case ONDA_OP_JUMP_IF: {
+      memcpy(&jmp_target, &bytecode[pos], 4);
+      int32_t jmp_offset =
+          (int32_t)(bcode_to_mcode[jmp_target] - (mcode_size + 1));
+      if (bcode_to_mcode[jmp_target] == -1) {
+        jmp_patch_list = onda_realloc(jmp_patch_list,
+                                      (jmp_patch_count + 1) * sizeof(uint32_t));
+        jmp_patch_list[jmp_patch_count++] = pos - 1;
+      }
+      pos += 4;
+      EMIT(0x54000000 | ((uint32_t)jmp_offset << 5) | 0x1);
+    } break;
     case ONDA_OP_PRINT: {
       const uint64_t addr = (uint64_t)(uintptr_t)&onda_print_u64;
       EMIT(a64_movz_x(16, (addr >> 0) & 0xFFFF, 0));

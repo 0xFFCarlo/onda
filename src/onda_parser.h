@@ -10,6 +10,7 @@ typedef enum : uint8_t {
   TOKEN_NUMBER,    // 42, -3.14
   TOKEN_STRING,    // "Mario"
   TOKEN_OPERATOR,  // + - * / ! % = == != < > <= >= & |
+  TOKEN_LABEL,     // @label
   TOKEN_WORD,      // identifier
   TOKEN_INVALID,   // invalid token
   TOKEN_EOF,       // end of file

@@ -1,5 +1,6 @@
 #include "onda_parser.h"
 
+#include "onda_dict.h"
 #include "onda_util.h"
 #include "onda_vm.h"
 
@@ -191,7 +192,6 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
     return tok1(lexer, t, TOKEN_COLON);
   case ';':
     return tok1(lexer, t, TOKEN_SEMICOLON);
-
   case '"': {
     int rc = lex_string(lexer, &t->start, &t->len);
     if (rc) {
@@ -202,7 +202,17 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
       t->type = TOKEN_STRING;
     return;
   }
-
+  case '@': {
+    // label
+    advance(lexer); // skip '@'
+    size_t start_pos = lexer->pos;
+    while (!at_end(lexer) && !isspace((unsigned char)curr(lexer)))
+      advance(lexer);
+    t->type = TOKEN_LABEL;
+    t->start = lexer->src + start_pos;
+    t->len = (int)(lexer->pos - start_pos);
+    return;
+  }
   case '+':
     return tokop1(lexer, t, OPERATOR_ADD);
   case '*':
@@ -211,7 +221,6 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
     return tokop1(lexer, t, OPERATOR_DIVIDE);
   case '%':
     return tokop1(lexer, t, OPERATOR_MODULO);
-
   case '-':
     if (!isdigit((unsigned char)nextc(lexer)))
       return tokop1(lexer, t, OPERATOR_SUBTRACT);
@@ -290,6 +299,10 @@ void onda_parse(const char* source,
       .line = 1,
       .column = 0,
   };
+  onda_dict_t words;
+  onda_dict_t labels;
+  onda_dict_init(&words);
+  onda_dict_init(&labels);
 
   static const uint8_t oper_to_code_map[] = {
       [OPERATOR_ADD] = ONDA_OP_ADD,
@@ -317,6 +330,8 @@ void onda_parse(const char* source,
       {"over", ONDA_OP_OVER},
       {"rot", ONDA_OP_ROT},
       {"swap", ONDA_OP_SWAP},
+      {"jmp", ONDA_OP_JUMP},
+      {"jmp_if", ONDA_OP_JUMP_IF},
   };
 
   size_t pc = 0;
@@ -397,10 +412,21 @@ void onda_parse(const char* source,
 
       if (hit) {
         code[pc++] = hit->opcode;
+        if (hit->opcode == ONDA_OP_JUMP || hit->opcode == ONDA_OP_JUMP_IF) {
+          // TODO: handle jump to targets
+          // next token should be a label
+          // if label exists, write its address
+          // else, record a fixup to be resolved later
+        }
         break;
       }
 
       // TODO: check if it is a defined word in a dictionary
+      char* word = strndup(tok.start, tok.len);
+      uint32_t bcode_pos;
+      if (onda_dict_get(&words, word, &bcode_pos) == 0) {
+        // TODO: handle word calling / inlining
+      }
       fprintf(stderr,
               "Unknown word '%.*s' at line %lu, column %lu\n",
               (int)tok.len,
@@ -409,6 +435,13 @@ void onda_parse(const char* source,
               lexer.column);
       return;
 
+      break;
+    }
+    case TOKEN_LABEL: {
+      char* label = strndup(tok.start, tok.len);
+      uint32_t jmp_target;
+      onda_dict_put(&labels, label, (uint32_t)pc);
+      // TODO: handle label usage
       break;
     }
     default:

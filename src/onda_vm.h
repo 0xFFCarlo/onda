@@ -37,7 +37,7 @@ typedef enum onda_op_type {
   ONDA_OP_DROP,
   // Control Flow
   ONDA_OP_JUMP,
-  ONDA_OP_JUMP_IF_FALSE,
+  ONDA_OP_JUMP_IF,
   ONDA_OP_RETURN,
   ONDA_OP_HALT,
   // I/O Operations
