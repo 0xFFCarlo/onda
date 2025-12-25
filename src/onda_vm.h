@@ -39,7 +39,7 @@ typedef enum onda_op_type {
   ONDA_OP_JUMP,
   ONDA_OP_JUMP_IF,
   ONDA_OP_RETURN,
-  ONDA_OP_HALT,
+  ONDA_OP_RET,
   // I/O Operations
   ONDA_OP_PRINT,
   ONDA_OP_PRINT_STR,

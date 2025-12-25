@@ -289,10 +289,10 @@ static int cmp_key_kw(const void* a, const void* b) {
   return 0;
 }
 
-void onda_parse(const char* source,
-                uint8_t* code,
-                size_t* code_size,
-                size_t* entry_pc) {
+int onda_parse(const char* source,
+               uint8_t* code,
+               size_t* code_size,
+               size_t* entry_pc) {
   onda_lexer_t lexer = {
       .src = source,
       .pos = 0,
@@ -303,6 +303,8 @@ void onda_parse(const char* source,
   onda_dict_t labels;
   onda_dict_init(&words);
   onda_dict_init(&labels);
+  uint16_t label_id = 0;
+  int rc = 0;
 
   static const uint8_t oper_to_code_map[] = {
       [OPERATOR_ADD] = ONDA_OP_ADD,
@@ -325,9 +327,9 @@ void onda_parse(const char* source,
       {"and", ONDA_OP_AND},
       {"drop", ONDA_OP_DROP},
       {"dup", ONDA_OP_DUP},
-      {"halt", ONDA_OP_HALT},
       {"or", ONDA_OP_OR},
       {"over", ONDA_OP_OVER},
+      {"ret", ONDA_OP_RET},
       {"rot", ONDA_OP_ROT},
       {"swap", ONDA_OP_SWAP},
       {"jmp", ONDA_OP_JUMP},
@@ -346,7 +348,8 @@ void onda_parse(const char* source,
               "Lexer error at line %lu, column %lu\n",
               lexer.line,
               lexer.column);
-      return;
+      rc = -1;
+      goto done;
     }
 
     switch (tok.type) {
@@ -354,14 +357,16 @@ void onda_parse(const char* source,
       if (tok.number <= 0x7F && tok.number >= -0x80) {
         if (pc + 2 > *code_size) {
           fprintf(stderr, "Code buffer overflow\n");
-          return;
+          rc = -1;
+          goto done;
         }
         code[pc++] = ONDA_OP_PUSH_CONST_U8;
         code[pc++] = (int8_t)tok.number;
       } else if (tok.number <= 0x7FFFFFFF && tok.number >= -0x80000000) {
         if (pc + 1 + sizeof(int32_t) > *code_size) {
           fprintf(stderr, "Code buffer overflow\n");
-          return;
+          rc = -1;
+          goto done;
         }
         code[pc++] = ONDA_OP_PUSH_CONST_U32;
         uint32_t val = (int32_t)(tok.number);
@@ -370,7 +375,8 @@ void onda_parse(const char* source,
       } else {
         if (pc + 1 + sizeof(int64_t) > *code_size) {
           fprintf(stderr, "Code buffer overflow\n");
-          return;
+          rc = -1;
+          goto done;
         }
         code[pc++] = ONDA_OP_PUSH_CONST_U64;
         uint64_t val = (int64_t)(tok.number);
@@ -381,7 +387,8 @@ void onda_parse(const char* source,
     case TOKEN_OPERATOR:
       if (pc + 1 > *code_size) {
         fprintf(stderr, "Code buffer overflow\n");
-        return;
+        rc = -1;
+        goto done;
       }
       code[pc++] = oper_to_code_map[tok.subtype];
       break;
@@ -398,7 +405,8 @@ void onda_parse(const char* source,
     case TOKEN_WORD: {
       if (pc + 1 > *code_size) {
         fprintf(stderr, "Code buffer overflow\n");
-        return;
+        rc = -1;
+        goto done;
       }
       str_slice_t k = {.s = tok.start, .len = tok.len};
 
@@ -425,7 +433,8 @@ void onda_parse(const char* source,
       char* word = strndup(tok.start, tok.len);
       uint32_t bcode_pos;
       if (onda_dict_get(&words, word, &bcode_pos) == 0) {
-        // TODO: handle word calling / inlining
+        // TODO: handle word calling
+        // inlining: copy bytecode at bcode_pos and
       }
       fprintf(stderr,
               "Unknown word '%.*s' at line %lu, column %lu\n",
@@ -433,15 +442,23 @@ void onda_parse(const char* source,
               tok.start,
               lexer.line,
               lexer.column);
-      return;
+      goto done;
 
       break;
     }
     case TOKEN_LABEL: {
       char* label = strndup(tok.start, tok.len);
       uint32_t jmp_target;
-      onda_dict_put(&labels, label, (uint32_t)pc);
-      // TODO: handle label usage
+      if (onda_dict_get(&labels, label, &jmp_target) == 0) {
+        fprintf(stderr,
+                "Duplicate label '%s' at line %lu, column %lu\n",
+                label,
+                lexer.line,
+                lexer.column);
+        goto done;
+      }
+      onda_dict_put(&labels, label, label_id);
+      label_id++;
       break;
     }
     default:
@@ -449,10 +466,15 @@ void onda_parse(const char* source,
               "Unexpected token at line %lu, column %lu\n",
               lexer.line,
               lexer.column);
-      return;
+      goto done;
     }
   }
 
+done:
   *code_size = pc;
   *entry_pc = 0; // Entry point at start
+
+  onda_dict_free(&labels);
+  onda_dict_free(&words);
+  return rc;
 }

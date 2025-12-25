@@ -30,7 +30,7 @@ int onda_vm_run(onda_vm_t* vm) {
   vm->sp = 0;
 
   static void* dispatch_table[] = {
-      [ONDA_OP_HALT] = &&op_halt,
+      [ONDA_OP_RET] = &&op_ret,
       [ONDA_OP_ADD] = &&op_add,
       [ONDA_OP_SUB] = &&op_sub,
       [ONDA_OP_MUL] = &&op_mul,
@@ -66,7 +66,7 @@ int onda_vm_run(onda_vm_t* vm) {
   DISPATCH();
 
   uint64_t tmp;
-  uint32_t jmp_target;
+  int16_t jmp_offset;
 
 // Arithmetic operations
 op_add:
@@ -170,14 +170,14 @@ op_drop:
   vm->sp--;
   DISPATCH();
 op_jmp:
-  memcpy(&jmp_target, &vm->code[vm->pc], 4);
-  vm->pc = jmp_target;
+  memcpy(&jmp_offset, &vm->code[vm->pc], 2);
+  vm->pc += jmp_offset;
   DISPATCH();
 op_jmp_if:
-  memcpy(&jmp_target, &vm->code[vm->pc], 4);
+  memcpy(&jmp_offset, &vm->code[vm->pc], 2);
   vm->pc += 2;
   if (vm->stack[--vm->sp])
-    vm->pc = jmp_target;
+    vm->pc += jmp_offset;
   DISPATCH();
 op_print:
   onda_print_u64((uint64_t)vm->stack[--vm->sp]);
@@ -186,7 +186,7 @@ op_print_str : {
   onda_print_string((char*)vm->stack[--vm->sp]);
   DISPATCH();
 }
-op_halt:
+op_ret:
   return 0;
 }
 

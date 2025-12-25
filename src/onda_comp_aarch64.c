@@ -227,7 +227,7 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       EMIT(a64_movk_x(16, (addr >> 48) & 0xFFFF, 48));
       EMIT2(AA64_BLR_X16, AA64_POP_X0_STACK);
     } break;
-    case ONDA_OP_HALT:
+    case ONDA_OP_RET:
       EMIT3(AA64_RESTORE_SP_X20, AA64_RESTORE_LR_x19, AA64_RET);
       break;
     default:

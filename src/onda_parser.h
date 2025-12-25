@@ -55,9 +55,9 @@ typedef struct {
 void onda_token_next(onda_lexer_t* lexer, onda_token_t* out_token);
 
 // Parse source code into bytecode buffer and set entry point if present
-void onda_parse(const char* source,
-                uint8_t* code,
-                size_t* code_size,
-                size_t* entry_pc);
+int onda_parse(const char* source,
+               uint8_t* code,
+               size_t* code_size,
+               size_t* entry_pc);
 
 #endif // ONDA_LEXER_H

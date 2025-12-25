@@ -5,10 +5,10 @@
 
 #include <stdio.h>
 
-static const char* program = "300 dup . halt\0";
-// static const char* program =
-//     "300 0 + 10 * dup + 2 swap * \"Result is \" .s . halt\0";
-// static const char *program = "\"Hello world!\n\" .s halt\0";
+// static const char* program = "300 dup . ret\0";
+static const char* program =
+    "300 0 + 10 * dup + 2 swap * \"Result is \" .s . ret\0";
+// static const char *program = "\"Hello world!\n\" .s ret\0";
 
 int main(int argc, char* argv[]) {
   uint8_t codebuf[1024];
