@@ -1,0 +1,6 @@
+10 @loop
+    --
+    dup .
+dup 0 > jmp_if loop
+drop
+ret

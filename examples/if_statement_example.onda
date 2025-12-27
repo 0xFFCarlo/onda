@@ -1,0 +1,7 @@
+# This is a comment
+10 1 > jmp_if done
+  "Inside if\n" .s
+@done
+
+"Outside if\n" .s
+ret

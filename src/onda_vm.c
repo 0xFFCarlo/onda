@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 onda_vm_t* onda_vm_new() {
   onda_vm_t* vm = onda_calloc(1, sizeof(onda_vm_t));
@@ -175,9 +176,10 @@ op_jmp:
   DISPATCH();
 op_jmp_if:
   memcpy(&jmp_offset, &vm->code[vm->pc], 2);
-  vm->pc += 2;
   if (vm->stack[--vm->sp])
     vm->pc += jmp_offset;
+  else
+    vm->pc += 2;
   DISPATCH();
 op_print:
   onda_print_u64((uint64_t)vm->stack[--vm->sp]);

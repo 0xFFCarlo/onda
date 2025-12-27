@@ -3,17 +3,18 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "onda_dict.h"
 
 typedef enum : uint8_t {
-  TOKEN_COLON,     // :
-  TOKEN_SEMICOLON, // ;
-  TOKEN_NUMBER,    // 42, -3.14
-  TOKEN_STRING,    // "Mario"
-  TOKEN_OPERATOR,  // + - * / ! % = == != < > <= >= & |
-  TOKEN_LABEL,     // @label
-  TOKEN_WORD,      // identifier
-  TOKEN_INVALID,   // invalid token
-  TOKEN_EOF,       // end of file
+  TOKEN_COLON,      // :
+  TOKEN_SEMICOLON,  // ;
+  TOKEN_NUMBER,     // 42, -3.14
+  TOKEN_STRING,     // "Mario"
+  TOKEN_OPERATOR,   // + - * / ! % = == != < > <= >= & |
+  TOKEN_LABEL,      // @label
+  TOKEN_IDENTIFIER, // identifier
+  TOKEN_INVALID,    // invalid token
+  TOKEN_EOF,        // end of file
 } onda_token_type;
 
 typedef enum : uint8_t {
@@ -21,6 +22,8 @@ typedef enum : uint8_t {
   OPERATOR_SUBTRACT,      // -
   OPERATOR_MULTIPLY,      // *
   OPERATOR_DIVIDE,        // /
+  OPERATOR_INC,           // ++
+  OPERATOR_DEC,           // --
   OPERATOR_MODULO,        // %
   OPERATOR_NOT,           // !
   OPERATOR_EQUAL,         // ==
@@ -49,6 +52,8 @@ typedef struct {
   size_t pos;
   size_t line;
   size_t column;
+  onda_dict_t words;
+  onda_dict_t labels;
 } onda_lexer_t;
 
 // Get next token from the lexer

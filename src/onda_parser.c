@@ -183,6 +183,8 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
     return;
   }
 
+  skip_whitespace_and_comments(lexer);
+
   t->start = lexer->src + lexer->pos;
   t->len = 1;
 
@@ -214,7 +216,7 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
     return;
   }
   case '+':
-    return tokop1(lexer, t, OPERATOR_ADD);
+    return tokop2_if(lexer, t, '+', OPERATOR_ADD, OPERATOR_INC);
   case '*':
     return tokop1(lexer, t, OPERATOR_MULTIPLY);
   case '/':
@@ -222,10 +224,10 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
   case '%':
     return tokop1(lexer, t, OPERATOR_MODULO);
   case '-':
-    if (!isdigit((unsigned char)nextc(lexer)))
-      return tokop1(lexer, t, OPERATOR_SUBTRACT);
+    if (!isdigit((unsigned char)nextc(lexer))) {
+      return tokop2_if(lexer, t, '-', OPERATOR_SUBTRACT, OPERATOR_DEC);
+    }
     break;
-
   case '!':
     return tokop2_if(lexer, t, '=', OPERATOR_NOT, OPERATOR_NOT_EQUAL);
   case '=':
@@ -247,7 +249,7 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
     return;
   }
 
-  t->type = TOKEN_WORD;
+  t->type = TOKEN_IDENTIFIER;
   size_t start_pos = lexer->pos;
   while (!at_end(lexer) && !isspace((unsigned char)curr(lexer)))
     advance(lexer);
@@ -289,6 +291,13 @@ static int cmp_key_kw(const void* a, const void* b) {
   return 0;
 }
 
+// Used to track unresolved jumps to labels during parsing
+typedef struct onda_unresolved_jump_t {
+  size_t pc_pos;
+  char* label;
+  struct onda_unresolved_jump_t* next;
+} onda_unresolved_jump_t;
+
 int onda_parse(const char* source,
                uint8_t* code,
                size_t* code_size,
@@ -299,11 +308,9 @@ int onda_parse(const char* source,
       .line = 1,
       .column = 0,
   };
-  onda_dict_t words;
-  onda_dict_t labels;
-  onda_dict_init(&words);
-  onda_dict_init(&labels);
-  uint16_t label_id = 0;
+  onda_dict_init(&lexer.words);
+  onda_dict_init(&lexer.labels);
+  onda_unresolved_jump_t* unresolved_jumps = NULL;
   int rc = 0;
 
   static const uint8_t oper_to_code_map[] = {
@@ -312,6 +319,8 @@ int onda_parse(const char* source,
       [OPERATOR_MULTIPLY] = ONDA_OP_MUL,
       [OPERATOR_DIVIDE] = ONDA_OP_DIV,
       [OPERATOR_MODULO] = ONDA_OP_MOD,
+      [OPERATOR_INC] = ONDA_OP_INC,
+      [OPERATOR_DEC] = ONDA_OP_DEC,
       [OPERATOR_NOT] = ONDA_OP_NOT,
       [OPERATOR_EQUAL] = ONDA_OP_EQ,
       [OPERATOR_NOT_EQUAL] = ONDA_OP_NEQ,
@@ -327,18 +336,17 @@ int onda_parse(const char* source,
       {"and", ONDA_OP_AND},
       {"drop", ONDA_OP_DROP},
       {"dup", ONDA_OP_DUP},
+      {"jmp", ONDA_OP_JUMP},
+      {"jmp_if", ONDA_OP_JUMP_IF},
       {"or", ONDA_OP_OR},
       {"over", ONDA_OP_OVER},
       {"ret", ONDA_OP_RET},
       {"rot", ONDA_OP_ROT},
       {"swap", ONDA_OP_SWAP},
-      {"jmp", ONDA_OP_JUMP},
-      {"jmp_if", ONDA_OP_JUMP_IF},
   };
 
   size_t pc = 0;
   while (true) {
-    skip_whitespace_and_comments(&lexer);
     onda_token_t tok;
     onda_token_next(&lexer, &tok);
     if (tok.type == TOKEN_EOF) {
@@ -393,6 +401,8 @@ int onda_parse(const char* source,
       code[pc++] = oper_to_code_map[tok.subtype];
       break;
     case TOKEN_STRING: {
+      // TODO: constants should be stored in the
+      // bytecode somehow
       char* str_data = onda_malloc(tok.len + 1);
       memcpy(str_data, tok.start, tok.len);
       str_data[tok.len] = '\0';
@@ -402,7 +412,7 @@ int onda_parse(const char* source,
       pc += sizeof(uint64_t);
       break;
     }
-    case TOKEN_WORD: {
+    case TOKEN_IDENTIFIER: {
       if (pc + 1 > *code_size) {
         fprintf(stderr, "Code buffer overflow\n");
         rc = -1;
@@ -411,28 +421,58 @@ int onda_parse(const char* source,
       str_slice_t k = {.s = tok.start, .len = tok.len};
 
       // Check if it is a keyword
-      const onda_keyword_t* hit =
+      const onda_keyword_t* hit_keyword =
           bsearch(&k,
                   keywords,
                   sizeof(keywords) / sizeof(keywords[0]),
                   sizeof(keywords[0]),
                   cmp_key_kw);
 
-      if (hit) {
-        code[pc++] = hit->opcode;
-        if (hit->opcode == ONDA_OP_JUMP || hit->opcode == ONDA_OP_JUMP_IF) {
+      if (hit_keyword) {
+        code[pc++] = hit_keyword->opcode;
+
+        // Jumps need special handling, as they have a target label
+        if (hit_keyword->opcode == ONDA_OP_JUMP ||
+            hit_keyword->opcode == ONDA_OP_JUMP_IF) {
           // TODO: handle jump to targets
           // next token should be a label
           // if label exists, write its address
           // else, record a fixup to be resolved later
+          onda_token_next(&lexer, &tok);
+          if (tok.type != TOKEN_IDENTIFIER) {
+            fprintf(stderr,
+                    "Expected label after jump at line %lu, column %lu\n",
+                    lexer.line,
+                    lexer.column);
+            rc = -1;
+            goto done;
+          }
+
+          // Check if the label is already defined
+          uint32_t bcode_pos = 0;
+          if (onda_dict_get(&lexer.labels, tok.start, tok.len, &bcode_pos)) {
+            // Store unresolved jump
+            onda_unresolved_jump_t* uj =
+                (onda_unresolved_jump_t*)onda_calloc(1, sizeof(*uj));
+            uj->pc_pos = pc;
+            uj->label = (char*)onda_calloc(1, (size_t)tok.len + 1);
+            memcpy(uj->label, tok.start, (size_t)tok.len);
+            uj->label[tok.len] = '\0';
+            uj->next = unresolved_jumps;
+            unresolved_jumps = uj;
+          }
+
+          // Write jump offset, or placeholder if unresolved
+          const int16_t offset = (int16_t)(bcode_pos - pc);
+          memcpy(&code[pc], &offset, sizeof(int16_t));
+          pc += sizeof(int16_t);
         }
         break;
       }
 
       // TODO: check if it is a defined word in a dictionary
-      char* word = strndup(tok.start, tok.len);
       uint32_t bcode_pos;
-      if (onda_dict_get(&words, word, &bcode_pos) == 0) {
+      if (onda_dict_get(&lexer.words, tok.start, tok.len, &bcode_pos) == 0) {
         // TODO: handle word calling
         // inlining: copy bytecode at bcode_pos and
       }
@@ -447,18 +487,38 @@ int onda_parse(const char* source,
       break;
     }
     case TOKEN_LABEL: {
-      char* label = strndup(tok.start, tok.len);
       uint32_t jmp_target;
-      if (onda_dict_get(&labels, label, &jmp_target) == 0) {
+      if (onda_dict_get(&lexer.labels, tok.start, tok.len, &jmp_target) == 0) {
         fprintf(stderr,
-                "Duplicate label '%s' at line %lu, column %lu\n",
-                label,
+                "Duplicate label '%.*s' at line %lu, column %lu\n",
+                (int)tok.len,
+                tok.start,
                 lexer.line,
                 lexer.column);
         goto done;
       }
-      onda_dict_put(&labels, label, label_id);
-      label_id++;
+      onda_dict_put(&lexer.labels, tok.start, tok.len, (uint32_t)pc);
+      // Resolve any pending jumps to this label
+      onda_unresolved_jump_t* uj = unresolved_jumps;
+      onda_unresolved_jump_t* prev_uj = NULL;
+      while (uj) {
+        if (strncmp(uj->label, tok.start, tok.len) == 0) {
+          // Patch jump offset
+          int16_t offset = (int16_t)(pc - uj->pc_pos);
+          memcpy(&code[uj->pc_pos], &offset, sizeof(int16_t));
+          // Remove from unresolved jumps list
+          if (prev_uj)
+            prev_uj->next = uj->next;
+          else
+            unresolved_jumps = uj->next;
+          onda_free(uj->label);
+          onda_unresolved_jump_t* to_free = uj;
+          uj = uj->next;
+          onda_free(to_free);
+          continue;
+        }
+        uj = uj->next;
+      }
       break;
     }
     default:
@@ -471,10 +531,21 @@ int onda_parse(const char* source,
   }
 
 done:
+
+  // Check for any remaining unresolved jumps
+  while (unresolved_jumps) {
+    fprintf(stderr, "Unresolved jump to label '%s'\n", unresolved_jumps->label);
+    onda_free(unresolved_jumps->label);
+    onda_unresolved_jump_t* to_free = unresolved_jumps;
+    unresolved_jumps = unresolved_jumps->next;
+    onda_free(to_free);
+    rc = -1;
+  }
+
   *code_size = pc;
   *entry_pc = 0; // Entry point at start
 
-  onda_dict_free(&labels);
-  onda_dict_free(&words);
+  onda_dict_free(&lexer.labels);
+  onda_dict_free(&lexer.words);
   return rc;
 }

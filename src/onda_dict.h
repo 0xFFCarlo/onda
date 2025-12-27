@@ -6,6 +6,7 @@
 
 typedef struct {
   char* key;
+  size_t key_len;
   uint32_t value;
 } onda_dict_slot_t;
 
@@ -17,7 +18,13 @@ typedef struct {
 
 void onda_dict_init(onda_dict_t* d);
 void onda_dict_free(onda_dict_t* d);
-int onda_dict_get(onda_dict_t* d, const char* key, uint32_t* out);
-void onda_dict_put(onda_dict_t* d, const char* key, uint32_t value);
+int onda_dict_get(onda_dict_t* d,
+                  const char* key,
+                  size_t key_len,
+                  uint32_t* out);
+void onda_dict_put(onda_dict_t* d,
+                   const char* key,
+                   size_t key_len,
+                   uint32_t value);
 
 #endif // ONDA_DICT_H

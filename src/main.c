@@ -6,9 +6,12 @@
 #include <stdio.h>
 
 // static const char* program = "300 dup . ret\0";
-static const char* program =
-    "300 0 + 10 * dup + 2 swap * \"Result is \" .s . ret\0";
+// static const char* program =
+//     "300 0 + 10 * dup + 2 swap * \"Result is \" .s . ret\0";
 // static const char *program = "\"Hello world!\n\" .s ret\0";
+static const char* program = "10 @loop -- dup . dup 0 > jmp_if loop drop ret";
+// static const char* program =
+//     "10 1 > jmp_if done \"Inside if\n\" .s @done \"Outside if\n\" .s ret";
 
 int main(int argc, char* argv[]) {
   uint8_t codebuf[1024];

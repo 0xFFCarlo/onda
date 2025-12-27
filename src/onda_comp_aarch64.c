@@ -22,6 +22,7 @@
 #define AA64_BLR_X16          0xD63F0200 // blr x16
 #define AA64_RET              0xD65F03C0 // ret
 #define AA64_MOV_X0_X1        0xAA0103E0 // mov x0, x1
+#define AA64_MOV_X1_X0        0xAA0003E1 // mov x1, x0
 #define AA64_MOV_X0_X2        0xAA0203E0 // mov x0, x2
 #define AA64_ADD_X0_X1_X0     0x8B000020 // add x0, x1, x0
 #define AA64_SUB_X0_X1_X0     0xCB000020 // sub x0, x1, x0
@@ -56,19 +57,25 @@ static inline uint32_t a64_movk_x(int rd, uint16_t imm16, int shift) {
   return 0xF2800000 | (hw << 21) | ((uint32_t)imm16 << 5) | (rd & 31);
 }
 
+typedef struct onda_unresolved_jump_t {
+  size_t mcode_pos;
+  size_t bcode_pos;
+  int16_t bcode_jmp_offset;
+  struct onda_unresolved_jump_t* next;
+} onda_unresolved_jump_t;
+
 size_t onda_comp_aarch64(const uint8_t* bytecode,
                          size_t bytecode_size,
                          uint8_t** out_machine_code,
                          size_t* out_machine_code_size) {
-  int pos = 0;
+  int bcode_pos = 0;
   uint32_t* mcode = onda_malloc(ONDA_MCODE_INIT_CAP * sizeof(uint32_t));
   int32_t* bcode_to_mcode = onda_malloc(bytecode_size * sizeof(int32_t));
-  uint32_t* jmp_patch_list = NULL;
-  size_t jmp_patch_count = 0;
   size_t mcode_capacity = ONDA_MCODE_INIT_CAP;
   size_t mcode_size = 0;
   uint16_t lo0, hi0, lo1, hi1;
-  uint32_t jmp_target;
+  int16_t jmp_offset;
+  onda_unresolved_jump_t* unresolved_jumps = NULL;
 
   memset(bcode_to_mcode, -1, bytecode_size * sizeof(int32_t));
 
@@ -83,7 +90,7 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
   // Prologue: save lr and sp
   EMIT2(AA64_SAVE_SP_X20, AA64_SAVE_LR_x19);
 
-  while (pos < bytecode_size) {
+  while (bcode_pos < bytecode_size) {
 
     // Ensure capacity
     if (mcode_size + ONDA_MAX_OP_INSTR_COUNT >= mcode_capacity) {
@@ -92,27 +99,54 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
     }
 
     // Store Bytecode to machine code mapping, for patching jumps later
-    bcode_to_mcode[pos] = mcode_size;
+    bcode_to_mcode[bcode_pos] = mcode_size;
 
-    const uint8_t opcode = bytecode[pos++];
+    // Resolve previously unresolved jumps to this bytecode position
+    onda_unresolved_jump_t** link = &unresolved_jumps;
+    while (*link) {
+      onda_unresolved_jump_t* jmp = *link;
+
+      const int32_t target_bpos = jmp->bcode_pos + jmp->bcode_jmp_offset;
+      if (target_bpos != bcode_pos) {
+        link = &jmp->next;
+        continue;
+      }
+
+      const int32_t aa_jmp_offset = mcode_size - jmp->mcode_pos;
+
+      if (bytecode[jmp->bcode_pos] == ONDA_OP_JUMP_IF) {
+        const uint32_t imm19 = (uint32_t)aa_jmp_offset & 0x7FFFFu;
+        mcode[jmp->mcode_pos] =
+            0xB5000000 | (imm19 << 5) | 0x1; // cbnz x1, label
+      } else {
+        mcode[jmp->mcode_pos] =
+            0x14000000u | ((uint32_t)aa_jmp_offset & 0x03FFFFFFu);
+      }
+
+      // remove node
+      *link = jmp->next;
+      onda_free(jmp);
+    }
+
+    const uint8_t opcode = bytecode[bcode_pos++];
     switch (opcode) {
     case ONDA_OP_PUSH_CONST_U8:
-      EMIT2(AA64_PUSH_X0_STACK, a64_movz_x(0, bytecode[pos++], 0));
+      EMIT2(AA64_PUSH_X0_STACK, a64_movz_x(0, bytecode[bcode_pos++], 0));
       break;
     case ONDA_OP_PUSH_CONST_U32: {
-      memcpy(&lo0, &bytecode[pos], 2);
-      memcpy(&hi0, &bytecode[pos + 2], 2);
-      pos += 4;
+      memcpy(&lo0, &bytecode[bcode_pos], 2);
+      memcpy(&hi0, &bytecode[bcode_pos + 2], 2);
+      bcode_pos += 4;
       EMIT2(AA64_PUSH_X0_STACK, a64_movz_x(0, lo0, 0));
       if (hi0)
         mcode[mcode_size++] = a64_movk_x(0, hi0, 16);
     } break;
     case ONDA_OP_PUSH_CONST_U64: {
-      memcpy(&lo0, &bytecode[pos], 2);
-      memcpy(&hi0, &bytecode[pos + 2], 2);
-      memcpy(&lo1, &bytecode[pos + 4], 2);
-      memcpy(&hi1, &bytecode[pos + 6], 2);
-      pos += 8;
+      memcpy(&lo0, &bytecode[bcode_pos], 2);
+      memcpy(&hi0, &bytecode[bcode_pos + 2], 2);
+      memcpy(&lo1, &bytecode[bcode_pos + 4], 2);
+      memcpy(&hi1, &bytecode[bcode_pos + 6], 2);
+      bcode_pos += 8;
       EMIT2(AA64_PUSH_X0_STACK, a64_movz_x(0, lo0, 0));
       if (hi0)
         EMIT(a64_movk_x(0, hi0, 16));
@@ -188,28 +222,47 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       EMIT(AA64_POP_X0_STACK);
       break;
     case ONDA_OP_JUMP: {
-      memcpy(&jmp_target, &bytecode[pos], 4);
-      int32_t jmp_offset =
-          (int32_t)(bcode_to_mcode[jmp_target] - (mcode_size + 1));
-      if (bcode_to_mcode[jmp_target] == -1) {
-        jmp_patch_list = onda_realloc(jmp_patch_list,
-                                      (jmp_patch_count + 1) * sizeof(uint32_t));
-        jmp_patch_list[jmp_patch_count++] = pos - 1;
+      memcpy(&jmp_offset, &bytecode[bcode_pos], 2);
+      if (bcode_to_mcode[bcode_pos + jmp_offset] == -1) {
+        // unresolved jump
+        onda_unresolved_jump_t* uj =
+            (onda_unresolved_jump_t*)onda_calloc(1, sizeof(*uj));
+        uj->mcode_pos = mcode_size;
+        uj->bcode_pos = bcode_pos;
+        uj->bcode_jmp_offset = jmp_offset;
+        uj->next = unresolved_jumps;
+        unresolved_jumps = uj;
+
+        EMIT(0); // placeholder
+      } else {
+        const int32_t aa_jmp_offset =
+            bcode_to_mcode[bcode_pos + jmp_offset] - mcode_size;
+        EMIT(0x14000000 |
+             ((uint32_t)aa_jmp_offset & 0x03FFFFFF)); // b jmp_offset
       }
-      pos += 4;
-      EMIT(0x94000000 | ((uint32_t)jmp_offset & 0x03FFFFFF)); // b jmp_offset
+      bcode_pos += 2;
     } break;
     case ONDA_OP_JUMP_IF: {
-      memcpy(&jmp_target, &bytecode[pos], 4);
-      int32_t jmp_offset =
-          (int32_t)(bcode_to_mcode[jmp_target] - (mcode_size + 1));
-      if (bcode_to_mcode[jmp_target] == -1) {
-        jmp_patch_list = onda_realloc(jmp_patch_list,
-                                      (jmp_patch_count + 1) * sizeof(uint32_t));
-        jmp_patch_list[jmp_patch_count++] = pos - 1;
+      EMIT(AA64_MOV_X1_X0);
+      EMIT(AA64_POP_X0_STACK);
+      memcpy(&jmp_offset, &bytecode[bcode_pos], 2);
+      if (bcode_to_mcode[bcode_pos + jmp_offset] == -1) {
+        // unresolved jump
+        onda_unresolved_jump_t* uj =
+            (onda_unresolved_jump_t*)onda_calloc(1, sizeof(*uj));
+        uj->mcode_pos = mcode_size;
+        uj->bcode_pos = bcode_pos;
+        uj->bcode_jmp_offset = jmp_offset;
+        uj->next = unresolved_jumps;
+        unresolved_jumps = uj;
+        EMIT(0); // placeholder
+      } else {
+        const int32_t aa_jmp_offset =
+            bcode_to_mcode[bcode_pos + jmp_offset] - mcode_size;
+        const uint32_t imm19 = (uint32_t)(aa_jmp_offset & 0x7FFFF);
+        EMIT(0xB5000000 | (imm19 << 5) | 0x1); // cbnz x1, label
       }
-      pos += 4;
-      EMIT(0x54000000 | ((uint32_t)jmp_offset << 5) | 0x1);
+      bcode_pos += 2;
     } break;
     case ONDA_OP_PRINT: {
       const uint64_t addr = (uint64_t)(uintptr_t)&onda_print_u64;
@@ -234,6 +287,21 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       printf("Error: Unknown opcode %02X\n", opcode);
       break;
     }
+  }
+
+  // Error unresolved jumps
+  if (unresolved_jumps) {
+    printf("Error: Unresolved jumps remain after compilation.\n");
+    // Free unresolved jumps
+    onda_unresolved_jump_t* uj = unresolved_jumps;
+    while (uj) {
+      onda_unresolved_jump_t* next = uj->next;
+      onda_free(uj);
+      uj = next;
+    }
+    onda_free(mcode);
+    onda_free(bcode_to_mcode);
+    return -1;
   }
 
   *out_machine_code = (uint8_t*)mcode;
