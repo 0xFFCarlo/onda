@@ -1,7 +1,7 @@
-# This is a comment
-10 1 > jmp_if done
-  "Inside if\n" .s
+10 # Temperature in C
+15 > jmp_if done
+  "Temperature is cold\n" .s
+  ret
 @done
-
-"Outside if\n" .s
+"Temperature is warm\n" .s
 ret

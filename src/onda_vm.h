@@ -7,6 +7,10 @@
 #define ONDA_VM_STACK_SIZE 1024
 
 typedef enum onda_op_type {
+  // Control Flow
+  ONDA_OP_RET = 0,
+  ONDA_OP_JUMP,
+  ONDA_OP_JUMP_IF,
   // Arithmetic Operations
   ONDA_OP_ADD,
   ONDA_OP_SUB,
@@ -35,11 +39,6 @@ typedef enum onda_op_type {
   ONDA_OP_OVER,
   ONDA_OP_ROT,
   ONDA_OP_DROP,
-  // Control Flow
-  ONDA_OP_JUMP,
-  ONDA_OP_JUMP_IF,
-  ONDA_OP_RETURN,
-  ONDA_OP_RET,
   // I/O Operations
   ONDA_OP_PRINT,
   ONDA_OP_PRINT_STR,

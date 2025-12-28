@@ -254,6 +254,11 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
   while (!at_end(lexer) && !isspace((unsigned char)curr(lexer)))
     advance(lexer);
   t->len = (int)(lexer->pos - start_pos);
+  if (t->len == 0) {
+    t->type = TOKEN_EOF;
+    t->start = lexer->src + lexer->pos;
+    return;
+  }
 }
 
 static int cmp_strptr(const void* a, const void* b) {
@@ -547,5 +552,26 @@ done:
 
   onda_dict_free(&lexer.labels);
   onda_dict_free(&lexer.words);
+  return rc;
+}
+
+int onda_parse_file(const char* filename,
+                    uint8_t* code,
+                    size_t* code_size,
+                    size_t* entry_pc) {
+  FILE* f = fopen(filename, "rb");
+  if (!f) {
+    fprintf(stderr, "Error: Unable to open file '%s'\n", filename);
+    return -1;
+  }
+  fseek(f, 0, SEEK_END);
+  long fsize = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  char* buffer = (char*)onda_malloc((size_t)fsize + 1);
+  fread(buffer, 1, (size_t)fsize, f);
+  buffer[fsize] = '\0';
+  fclose(f);
+  int rc = onda_parse(buffer, code, code_size, entry_pc);
+  onda_free(buffer);
   return rc;
 }

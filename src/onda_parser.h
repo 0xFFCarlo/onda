@@ -1,9 +1,10 @@
 #ifndef ONDA_PARSER_H
 #define ONDA_PARSER_H
 
+#include "onda_dict.h"
+
 #include <stddef.h>
 #include <stdint.h>
-#include "onda_dict.h"
 
 typedef enum : uint8_t {
   TOKEN_COLON,      // :
@@ -64,5 +65,11 @@ int onda_parse(const char* source,
                uint8_t* code,
                size_t* code_size,
                size_t* entry_pc);
+
+// Parse bytecode from file
+int onda_parse_file(const char* filename,
+                    uint8_t* code,
+                    size_t* code_size,
+                    size_t* entry_pc);
 
 #endif // ONDA_LEXER_H

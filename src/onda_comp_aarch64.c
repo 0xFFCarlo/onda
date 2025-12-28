@@ -35,7 +35,7 @@
 #define AA64_AND_X0_X1_X0     0x8A000020 // and x0, x1, x0
 #define AA64_ORR_X0_X1_X0     0xAA000020 // orr x0, x1, x0
 #define AA64_NOT_X0_X0        0xAA2003E0 // orn x0, x0, xzr
-#define AA64_CMP_X0_X1        0xEB00003F // cmp x0, x1
+#define AA64_CMP_X1_X0        0xEB00003F // cmp x1, x0
 #define AA64_CSET_X0_EQ       0xE000003F // cset x0, eq
 #define AA64_CSET_X0_NE       0x9A9F17E0 // cset x0, ne
 #define AA64_CSET_X0_LT       0x9A9FA7E0 // cset x0, lt
@@ -186,22 +186,22 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       EMIT(AA64_NOT_X0_X0);
       break;
     case ONDA_OP_EQ:
-      EMIT3(AA64_POP_X1_STACK, AA64_CMP_X0_X1, AA64_CSET_X0_EQ);
+      EMIT3(AA64_POP_X1_STACK, AA64_CMP_X1_X0, AA64_CSET_X0_EQ);
       break;
     case ONDA_OP_NEQ:
-      EMIT3(AA64_POP_X1_STACK, AA64_CMP_X0_X1, AA64_CSET_X0_NE);
+      EMIT3(AA64_POP_X1_STACK, AA64_CMP_X1_X0, AA64_CSET_X0_NE);
       break;
     case ONDA_OP_LT:
-      EMIT3(AA64_POP_X1_STACK, AA64_CMP_X0_X1, AA64_CSET_X0_LT);
+      EMIT3(AA64_POP_X1_STACK, AA64_CMP_X1_X0, AA64_CSET_X0_LT);
       break;
     case ONDA_OP_GT:
-      EMIT3(AA64_POP_X1_STACK, AA64_CMP_X0_X1, AA64_CSET_X0_GT);
+      EMIT3(AA64_POP_X1_STACK, AA64_CMP_X1_X0, AA64_CSET_X0_GT);
       break;
     case ONDA_OP_LTE:
-      EMIT3(AA64_POP_X1_STACK, AA64_CMP_X0_X1, AA64_CSET_X0_LTE);
+      EMIT3(AA64_POP_X1_STACK, AA64_CMP_X1_X0, AA64_CSET_X0_LTE);
       break;
     case ONDA_OP_GTE:
-      EMIT3(AA64_POP_X1_STACK, AA64_CMP_X0_X1, AA64_CSET_X0_GTE);
+      EMIT3(AA64_POP_X1_STACK, AA64_CMP_X1_X0, AA64_CSET_X0_GTE);
       break;
     case ONDA_OP_SWAP:
       EMIT3(AA64_LOAD_X1_STACK, AA64_STORE_X0_STACK, AA64_MOV_X0_X1);
@@ -228,7 +228,7 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
         onda_unresolved_jump_t* uj =
             (onda_unresolved_jump_t*)onda_calloc(1, sizeof(*uj));
         uj->mcode_pos = mcode_size;
-        uj->bcode_pos = bcode_pos;
+        uj->bcode_pos = bcode_pos - 1;
         uj->bcode_jmp_offset = jmp_offset;
         uj->next = unresolved_jumps;
         unresolved_jumps = uj;
@@ -251,7 +251,7 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
         onda_unresolved_jump_t* uj =
             (onda_unresolved_jump_t*)onda_calloc(1, sizeof(*uj));
         uj->mcode_pos = mcode_size;
-        uj->bcode_pos = bcode_pos;
+        uj->bcode_pos = bcode_pos - 1;
         uj->bcode_jmp_offset = jmp_offset;
         uj->next = unresolved_jumps;
         unresolved_jumps = uj;
