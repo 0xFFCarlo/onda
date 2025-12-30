@@ -296,27 +296,126 @@ static int cmp_key_kw(const void* a, const void* b) {
   return 0;
 }
 
-// Used to track unresolved jumps to labels during parsing
-typedef struct onda_unresolved_jump_t {
-  size_t pc_pos;
-  char* label;
-  struct onda_unresolved_jump_t* next;
-} onda_unresolved_jump_t;
+static int onda_lexer_push_label(onda_lexer_t* lexer,
+                                 const char* label,
+                                 size_t label_len,
+                                 uint8_t* code,
+                                 size_t pc) {
+  uint32_t jmp_target;
+  if (onda_dict_get(&lexer->labels, label, label_len, &jmp_target) == 0) {
+    fprintf(stderr,
+            "Duplicate label '%.*s' at line %lu, column %lu\n",
+            (int)label_len,
+            label,
+            lexer->line,
+            lexer->column);
+    return 1;
+  }
+  onda_dict_put(&lexer->labels, label, label_len, (uint32_t)pc);
+
+  // If the label is @main, set entry point
+  if (label_len == 4 && strncmp(label, "main", 4) == 0)
+    *lexer->entry_pc = pc;
+
+  // Resolve any pending jumps to this label
+  onda_unresolved_jump_t* uj = lexer->unresolved_jumps;
+  onda_unresolved_jump_t* prev_uj = NULL;
+  while (uj) {
+    if (strncmp(uj->label, label, label_len) == 0) {
+      // Patch jump offset, +1 because offset is relative to opcode
+      int16_t offset = (int16_t)(pc - uj->pc_pos);
+      memcpy(&code[uj->pc_pos], &offset, sizeof(int16_t));
+      // Remove from unresolved jumps list
+      if (prev_uj)
+        prev_uj->next = uj->next;
+      else
+        lexer->unresolved_jumps = uj->next;
+      onda_free(uj->label);
+      onda_unresolved_jump_t* to_free = uj;
+      uj = uj->next;
+      onda_free(to_free);
+      continue;
+    }
+    uj = uj->next;
+  }
+
+  return 0;
+}
+
+static inline bool is_jump_opcode(uint8_t opcode) {
+  return opcode == ONDA_OP_JUMP || opcode == ONDA_OP_JUMP_IF ||
+         opcode == ONDA_OP_DEC_JUMP_IF_NZ;
+}
+
+static int onda_lexer_push_jump(onda_lexer_t* lexer,
+                                uint8_t opcode,
+                                uint8_t* code,
+                                size_t* pc) {
+  onda_token_t tok;
+  if (!is_jump_opcode(opcode)) {
+    fprintf(stderr,
+            "Invalid jump opcode %02X at line %lu, column %lu\n",
+            opcode,
+            lexer->line,
+            lexer->column);
+    return -1;
+  }
+  code[(*pc)++] = opcode;
+
+  // Jumps need special handling, as they have a target label
+  onda_token_next(lexer, &tok);
+  if (tok.type != TOKEN_IDENTIFIER) {
+    fprintf(stderr,
+            "Expected label after jump at line %lu, column %lu\n",
+            lexer->line,
+            lexer->column);
+    return -1;
+  }
+
+  // Check if the label is already defined
+  uint32_t bcode_pos = 0;
+  if (onda_dict_get(&lexer->labels, tok.start, tok.len, &bcode_pos)) {
+    // Store unresolved jump
+    onda_unresolved_jump_t* uj =
+        (onda_unresolved_jump_t*)onda_calloc(1, sizeof(*uj));
+    uj->pc_pos = *pc;
+    uj->label = (char*)onda_calloc(1, (size_t)tok.len + 1);
+    memcpy(uj->label, tok.start, (size_t)tok.len);
+    uj->label[tok.len] = '\0';
+    uj->next = lexer->unresolved_jumps;
+    lexer->unresolved_jumps = uj;
+  }
+
+  // Write jump offset, or placeholder if unresolved
+  const int16_t offset = (int16_t)(bcode_pos - (int16_t)(*pc));
+  memcpy(&code[*pc], &offset, sizeof(int16_t));
+  *pc += sizeof(int16_t);
+  return 0;
+}
 
 int onda_parse(const char* source,
                uint8_t* code,
-               size_t* code_size,
+               size_t code_buf_size,
+               size_t* out_code_size,
                size_t* entry_pc) {
   onda_lexer_t lexer = {
       .src = source,
       .pos = 0,
       .line = 1,
       .column = 0,
+      .unresolved_jumps = NULL,
+      .entry_pc = entry_pc,
+      .current_word = {0},
   };
   onda_dict_init(&lexer.words);
   onda_dict_init(&lexer.labels);
-  onda_unresolved_jump_t* unresolved_jumps = NULL;
+  onda_word_info_t* words_info = NULL;
+  size_t words_info_size = 0;
   int rc = 0;
+
+  // Entry point at first byte by default, unless
+  // @main label is found
+  *entry_pc = 0;
 
   static const uint8_t oper_to_code_map[] = {
       [OPERATOR_ADD] = ONDA_OP_ADD,
@@ -336,15 +435,16 @@ int onda_parse(const char* source,
   };
 
   static const onda_keyword_t keywords[] = {
-      {".", ONDA_OP_PRINT},
-      {".s", ONDA_OP_PRINT_STR},
       {"and", ONDA_OP_AND},
+      {"dec_jmp_if_nz", ONDA_OP_DEC_JUMP_IF_NZ},
       {"drop", ONDA_OP_DROP},
       {"dup", ONDA_OP_DUP},
       {"jmp", ONDA_OP_JUMP},
       {"jmp_if", ONDA_OP_JUMP_IF},
       {"or", ONDA_OP_OR},
       {"over", ONDA_OP_OVER},
+      {"print", ONDA_OP_PRINT},
+      {"prints", ONDA_OP_PRINT_STR},
       {"ret", ONDA_OP_RET},
       {"rot", ONDA_OP_ROT},
       {"swap", ONDA_OP_SWAP},
@@ -354,21 +454,61 @@ int onda_parse(const char* source,
   while (true) {
     onda_token_t tok;
     onda_token_next(&lexer, &tok);
-    if (tok.type == TOKEN_EOF) {
-      break;
-    } else if (tok.type == TOKEN_INVALID) {
-      fprintf(stderr,
-              "Lexer error at line %lu, column %lu\n",
-              lexer.line,
-              lexer.column);
-      rc = -1;
-      goto done;
-    }
-
     switch (tok.type) {
+    case TOKEN_COLON:
+      // Check error nested word definition
+      if (lexer.current_word.name != NULL) {
+        fprintf(stderr,
+                "Nested word definition not allowed at line %lu, column %lu\n",
+                lexer.line,
+                lexer.column);
+        rc = -1;
+        goto done;
+      }
+      onda_token_next(&lexer, &tok);
+      if (tok.type != TOKEN_IDENTIFIER) {
+        fprintf(stderr,
+                "Expected word name after ':' at line %lu, column %lu\n",
+                lexer.line,
+                lexer.column);
+        rc = -1;
+        goto done;
+      }
+      lexer.current_word.name = (char*)onda_calloc(1, (size_t)tok.len + 1);
+      memcpy(lexer.current_word.name, tok.start, (size_t)tok.len);
+      lexer.current_word.name[tok.len] = '\0';
+      lexer.current_word.pc = pc;
+      lexer.current_word.word_len = 0;
+      break;
+    case TOKEN_SEMICOLON:
+      if (lexer.current_word.name == NULL) {
+        fprintf(stderr,
+                "Unexpected ';' at line %lu, column %lu\n",
+                lexer.line,
+                lexer.column);
+        rc = -1;
+        goto done;
+      }
+      // Store word info
+      lexer.current_word.word_len = pc - lexer.current_word.pc;
+      words_info_size++;
+      words_info = (onda_word_info_t*)onda_realloc(
+          words_info,
+          words_info_size * sizeof(onda_word_info_t));
+      words_info[words_info_size - 1] = lexer.current_word;
+      // Add to words dictionary
+      onda_dict_put(&lexer.words,
+                    lexer.current_word.name,
+                    strlen(lexer.current_word.name),
+                    (uint32_t)(words_info_size - 1));
+      // Cleanup
+      lexer.current_word.name = NULL;
+      lexer.current_word.pc = 0;
+      lexer.current_word.word_len = 0;
+      break;
     case TOKEN_NUMBER:
       if (tok.number <= 0x7F && tok.number >= -0x80) {
-        if (pc + 2 > *code_size) {
+        if (pc + 2 > code_buf_size) {
           fprintf(stderr, "Code buffer overflow\n");
           rc = -1;
           goto done;
@@ -376,7 +516,7 @@ int onda_parse(const char* source,
         code[pc++] = ONDA_OP_PUSH_CONST_U8;
         code[pc++] = (int8_t)tok.number;
       } else if (tok.number <= 0x7FFFFFFF && tok.number >= -0x80000000) {
-        if (pc + 1 + sizeof(int32_t) > *code_size) {
+        if (pc + 1 + sizeof(int32_t) > code_buf_size) {
           fprintf(stderr, "Code buffer overflow\n");
           rc = -1;
           goto done;
@@ -386,7 +526,7 @@ int onda_parse(const char* source,
         memcpy(&code[pc], &val, sizeof(uint32_t));
         pc += sizeof(int32_t);
       } else {
-        if (pc + 1 + sizeof(int64_t) > *code_size) {
+        if (pc + 1 + sizeof(int64_t) > code_buf_size) {
           fprintf(stderr, "Code buffer overflow\n");
           rc = -1;
           goto done;
@@ -398,7 +538,7 @@ int onda_parse(const char* source,
       }
       break;
     case TOKEN_OPERATOR:
-      if (pc + 1 > *code_size) {
+      if (pc + 1 > code_buf_size) {
         fprintf(stderr, "Code buffer overflow\n");
         rc = -1;
         goto done;
@@ -418,7 +558,7 @@ int onda_parse(const char* source,
       break;
     }
     case TOKEN_IDENTIFIER: {
-      if (pc + 1 > *code_size) {
+      if (pc + 1 > code_buf_size) {
         fprintf(stderr, "Code buffer overflow\n");
         rc = -1;
         goto done;
@@ -434,52 +574,38 @@ int onda_parse(const char* source,
                   cmp_key_kw);
 
       if (hit_keyword) {
-        code[pc++] = hit_keyword->opcode;
-
-        // Jumps need special handling, as they have a target label
-        if (hit_keyword->opcode == ONDA_OP_JUMP ||
-            hit_keyword->opcode == ONDA_OP_JUMP_IF) {
-          // TODO: handle jump to targets
-          // next token should be a label
-          // if label exists, write its address
-          // else, record a fixup to be resolved later
-          onda_token_next(&lexer, &tok);
-          if (tok.type != TOKEN_IDENTIFIER) {
-            fprintf(stderr,
-                    "Expected label after jump at line %lu, column %lu\n",
-                    lexer.line,
-                    lexer.column);
+        if (is_jump_opcode(hit_keyword->opcode)) {
+          // Jumps need special handling
+          if (pc + 1 + sizeof(int16_t) > code_buf_size) {
+            fprintf(stderr, "Code buffer overflow\n");
             rc = -1;
             goto done;
           }
 
-          // Check if the label is already defined
-          uint32_t bcode_pos = 0;
-          if (onda_dict_get(&lexer.labels, tok.start, tok.len, &bcode_pos)) {
-            // Store unresolved jump
-            onda_unresolved_jump_t* uj =
-                (onda_unresolved_jump_t*)onda_calloc(1, sizeof(*uj));
-            uj->pc_pos = pc;
-            uj->label = (char*)onda_calloc(1, (size_t)tok.len + 1);
-            memcpy(uj->label, tok.start, (size_t)tok.len);
-            uj->label[tok.len] = '\0';
-            uj->next = unresolved_jumps;
-            unresolved_jumps = uj;
+          if (onda_lexer_push_jump(&lexer, hit_keyword->opcode, code, &pc) !=
+              0) {
+            rc = -1;
+            goto done;
           }
-
-          // Write jump offset, or placeholder if unresolved
-          const int16_t offset = (int16_t)(bcode_pos - pc);
-          memcpy(&code[pc], &offset, sizeof(int16_t));
-          pc += sizeof(int16_t);
+        } else {
+          code[pc++] = hit_keyword->opcode;
         }
         break;
       }
 
-      // TODO: check if it is a defined word in a dictionary
-      uint32_t bcode_pos;
-      if (onda_dict_get(&lexer.words, tok.start, tok.len, &bcode_pos) == 0) {
-        // TODO: handle word calling
-        // inlining: copy bytecode at bcode_pos and
+      // Check if it is a defined word in a dictionary
+      uint32_t word_id;
+      if (onda_dict_get(&lexer.words, tok.start, tok.len, &word_id) == 0) {
+        onda_word_info_t* wi = &words_info[word_id];
+        // Inline the word
+        if (pc + wi->word_len > code_buf_size) {
+          fprintf(stderr, "Code buffer overflow\n");
+          rc = -1;
+          goto done;
+        }
+        memcpy(&code[pc], &code[wi->pc], wi->word_len);
+        pc += wi->word_len;
+        break;
       }
       fprintf(stderr,
               "Unknown word '%.*s' at line %lu, column %lu\n",
@@ -492,40 +618,14 @@ int onda_parse(const char* source,
       break;
     }
     case TOKEN_LABEL: {
-      uint32_t jmp_target;
-      if (onda_dict_get(&lexer.labels, tok.start, tok.len, &jmp_target) == 0) {
-        fprintf(stderr,
-                "Duplicate label '%.*s' at line %lu, column %lu\n",
-                (int)tok.len,
-                tok.start,
-                lexer.line,
-                lexer.column);
+      if (onda_lexer_push_label(&lexer, tok.start, tok.len, code, pc)) {
+        rc = -1;
         goto done;
-      }
-      onda_dict_put(&lexer.labels, tok.start, tok.len, (uint32_t)pc);
-      // Resolve any pending jumps to this label
-      onda_unresolved_jump_t* uj = unresolved_jumps;
-      onda_unresolved_jump_t* prev_uj = NULL;
-      while (uj) {
-        if (strncmp(uj->label, tok.start, tok.len) == 0) {
-          // Patch jump offset
-          int16_t offset = (int16_t)(pc - uj->pc_pos);
-          memcpy(&code[uj->pc_pos], &offset, sizeof(int16_t));
-          // Remove from unresolved jumps list
-          if (prev_uj)
-            prev_uj->next = uj->next;
-          else
-            unresolved_jumps = uj->next;
-          onda_free(uj->label);
-          onda_unresolved_jump_t* to_free = uj;
-          uj = uj->next;
-          onda_free(to_free);
-          continue;
-        }
-        uj = uj->next;
       }
       break;
     }
+    case TOKEN_EOF:
+      goto done;
     default:
       fprintf(stderr,
               "Unexpected token at line %lu, column %lu\n",
@@ -538,17 +638,18 @@ int onda_parse(const char* source,
 done:
 
   // Check for any remaining unresolved jumps
-  while (unresolved_jumps) {
-    fprintf(stderr, "Unresolved jump to label '%s'\n", unresolved_jumps->label);
-    onda_free(unresolved_jumps->label);
-    onda_unresolved_jump_t* to_free = unresolved_jumps;
-    unresolved_jumps = unresolved_jumps->next;
+  while (lexer.unresolved_jumps) {
+    fprintf(stderr,
+            "Unresolved jump to label '%s'\n",
+            lexer.unresolved_jumps->label);
+    onda_free(lexer.unresolved_jumps->label);
+    onda_unresolved_jump_t* to_free = lexer.unresolved_jumps;
+    lexer.unresolved_jumps = lexer.unresolved_jumps->next;
     onda_free(to_free);
     rc = -1;
   }
 
-  *code_size = pc;
-  *entry_pc = 0; // Entry point at start
+  *out_code_size = pc;
 
   onda_dict_free(&lexer.labels);
   onda_dict_free(&lexer.words);
@@ -557,7 +658,8 @@ done:
 
 int onda_parse_file(const char* filename,
                     uint8_t* code,
-                    size_t* code_size,
+                    size_t code_buf_size,
+                    size_t* out_code_size,
                     size_t* entry_pc) {
   FILE* f = fopen(filename, "rb");
   if (!f) {
@@ -571,7 +673,7 @@ int onda_parse_file(const char* filename,
   fread(buffer, 1, (size_t)fsize, f);
   buffer[fsize] = '\0';
   fclose(f);
-  int rc = onda_parse(buffer, code, code_size, entry_pc);
+  int rc = onda_parse(buffer, code, code_buf_size, out_code_size, entry_pc);
   onda_free(buffer);
   return rc;
 }

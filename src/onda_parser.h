@@ -48,6 +48,22 @@ typedef struct {
   int len;
 } onda_token_t;
 
+// Used to track word locations in the bytecode
+typedef struct onda_word_info_t {
+  char* name;
+  size_t name_len;
+  size_t pc;
+  size_t word_len;
+} onda_word_info_t;
+
+
+// Used to track unresolved jumps to labels during parsing
+typedef struct onda_unresolved_jump_t {
+  size_t pc_pos;
+  char* label;
+  struct onda_unresolved_jump_t* next;
+} onda_unresolved_jump_t;
+
 typedef struct {
   const char* src;
   size_t pos;
@@ -55,6 +71,9 @@ typedef struct {
   size_t column;
   onda_dict_t words;
   onda_dict_t labels;
+  size_t* entry_pc;
+  onda_unresolved_jump_t* unresolved_jumps;
+  onda_word_info_t current_word;
 } onda_lexer_t;
 
 // Get next token from the lexer
@@ -63,13 +82,15 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* out_token);
 // Parse source code into bytecode buffer and set entry point if present
 int onda_parse(const char* source,
                uint8_t* code,
-               size_t* code_size,
+               size_t code_buf_size,
+               size_t* out_code_size,
                size_t* entry_pc);
 
 // Parse bytecode from file
 int onda_parse_file(const char* filename,
                     uint8_t* code,
-                    size_t* code_size,
+                    size_t code_buf_size,
+                    size_t* out_code_size,
                     size_t* entry_pc);
 
 #endif // ONDA_LEXER_H

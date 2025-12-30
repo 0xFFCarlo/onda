@@ -1,1 +1,1 @@
-"Hello World!\n" .s ret
+"Hello World!\n" prints ret

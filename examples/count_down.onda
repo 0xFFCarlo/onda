@@ -1,6 +1,6 @@
 10 @loop
     --
-    dup .
+    dup print
 dup 0 > jmp_if loop
 drop
 ret

@@ -4,16 +4,20 @@
 #include "onda_vm.h"
 
 #include <stdio.h>
+#include <time.h>
+
+#define CODE_BUF_SIZE 1024
 
 int main(int argc, char* argv[]) {
-  uint8_t codebuf[1024];
-  size_t code_size = sizeof(codebuf);
+  uint8_t codebuf[CODE_BUF_SIZE];
+  size_t code_size = 0;
   size_t entry_pc = 0;
+  struct timespec start, end;
   if (argc < 2) {
     fprintf(stderr, "Usage: %s <source_file>\n", argv[0]);
     return 1;
   }
-  if (onda_parse_file(argv[1], codebuf, &code_size, &entry_pc)) {
+  if (onda_parse_file(argv[1], codebuf, CODE_BUF_SIZE, &code_size, &entry_pc)) {
     fprintf(stderr, "Failed to parse source file: %s\n", argv[1]);
     return 1;
   }
@@ -26,24 +30,35 @@ int main(int argc, char* argv[]) {
     printf("%02X ", codebuf[i]);
   }
   printf("\n\n");
+  // onda_vm_print_bytecode(codebuf, code_size);
+  // printf("\n");
 
   // Execute program in VM, starting from entry_pc
   onda_vm_t* vm = onda_vm_new();
   onda_vm_load_code(vm, codebuf, entry_pc, code_size);
   printf("Executing with VM:\n");
+  clock_gettime(CLOCK_MONOTONIC, &start);
   onda_vm_run(vm);
+  clock_gettime(CLOCK_MONOTONIC, &end);
   if (vm->sp > 0) {
     uint64_t tos = vm->stack[vm->sp - 1];
     printf("VM execution result (TOS): %llu\n", tos);
   } else {
     printf("VM stack is empty after execution.\n");
   }
+  printf("VM execution time: %.3f ms\n",
+         (end.tv_sec - start.tv_sec) * 1000.0 +
+             (end.tv_nsec - start.tv_nsec) / 1000000.0);
   printf("\n");
 
   // Compile to machine code (AArch64)
   uint8_t* machine_code = NULL;
   size_t machine_code_size = 0;
-  onda_comp_aarch64(codebuf, code_size, &machine_code, &machine_code_size);
+  onda_comp_aarch64(codebuf,
+                    entry_pc,
+                    code_size,
+                    &machine_code,
+                    &machine_code_size);
   printf("Generated machine code (%lu bytes):\n", machine_code_size);
   for (int i = 0; i < machine_code_size; i++) {
     if (i % 16 == 0 && i != 0)
@@ -54,8 +69,13 @@ int main(int argc, char* argv[]) {
 
   // Execute program in JIT
   printf("Executing with JIT:\n");
+  clock_gettime(CLOCK_MONOTONIC, &start);
   uint64_t tos = onda_jit_run(machine_code, machine_code_size);
+  clock_gettime(CLOCK_MONOTONIC, &end);
   printf("JIT execution result (TOS): %llu\n", tos);
+  printf("JIT execution time: %.3f ms\n",
+         (end.tv_sec - start.tv_sec) * 1000.0 +
+             (end.tv_nsec - start.tv_nsec) / 1000000.0);
 
   onda_vm_free(vm);
   return 0;

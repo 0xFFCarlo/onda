@@ -4,8 +4,8 @@
 #include "onda_util.h"
 
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 onda_vm_t* onda_vm_new() {
   onda_vm_t* vm = onda_calloc(1, sizeof(onda_vm_t));
@@ -23,7 +23,87 @@ int onda_vm_load_code(onda_vm_t* vm,
   vm->code_size = code_size;
   vm->entry_pc = entry_pc;
   vm->pc = 0;
+  vm->sp = 0;
   return 0;
+}
+
+static char* opcode_to_str[] = {
+    [ONDA_OP_RET] = "RET",
+    [ONDA_OP_ADD] = "ADD",
+    [ONDA_OP_SUB] = "SUB",
+    [ONDA_OP_MUL] = "MUL",
+    [ONDA_OP_DIV] = "DIV",
+    [ONDA_OP_MOD] = "MOD",
+    [ONDA_OP_INC] = "INC",
+    [ONDA_OP_DEC] = "DEC",
+    [ONDA_OP_AND] = "AND",
+    [ONDA_OP_OR] = "OR",
+    [ONDA_OP_NOT] = "NOT",
+    [ONDA_OP_EQ] = "EQ",
+    [ONDA_OP_NEQ] = "NEQ",
+    [ONDA_OP_LT] = "LT",
+    [ONDA_OP_GT] = "GT",
+    [ONDA_OP_LTE] = "LTE",
+    [ONDA_OP_GTE] = "GTE",
+    [ONDA_OP_PUSH_CONST_U8] = "PUSH_CONST_U8",
+    [ONDA_OP_PUSH_CONST_U32] = "PUSH_CONST_U32",
+    [ONDA_OP_PUSH_CONST_U64] = "PUSH_CONST_U64",
+    [ONDA_OP_SWAP] = "SWAP",
+    [ONDA_OP_DUP] = "DUP",
+    [ONDA_OP_OVER] = "OVER",
+    [ONDA_OP_ROT] = "ROT",
+    [ONDA_OP_DROP] = "DROP",
+    [ONDA_OP_JUMP] = "JUMP",
+    [ONDA_OP_JUMP_IF] = "JUMP_IF",
+    [ONDA_OP_DEC_JUMP_IF_NZ] = "DEC_JUMP_IF_NZ",
+    [ONDA_OP_PRINT] = "PRINT",
+    [ONDA_OP_PRINT_STR] = "PRINT_STR",
+};
+
+static uint8_t opcode_args_byte[] = {
+    [ONDA_OP_RET] = 0,
+    [ONDA_OP_ADD] = 0,
+    [ONDA_OP_SUB] = 0,
+    [ONDA_OP_MUL] = 0,
+    [ONDA_OP_DIV] = 0,
+    [ONDA_OP_MOD] = 0,
+    [ONDA_OP_INC] = 0,
+    [ONDA_OP_DEC] = 0,
+    [ONDA_OP_AND] = 0,
+    [ONDA_OP_OR] = 0,
+    [ONDA_OP_NOT] = 0,
+    [ONDA_OP_EQ] = 0,
+    [ONDA_OP_NEQ] = 0,
+    [ONDA_OP_LT] = 0,
+    [ONDA_OP_GT] = 0,
+    [ONDA_OP_LTE] = 0,
+    [ONDA_OP_GTE] = 0,
+    [ONDA_OP_PUSH_CONST_U8] = 1,
+    [ONDA_OP_PUSH_CONST_U32] = 4,
+    [ONDA_OP_PUSH_CONST_U64] = 8,
+    [ONDA_OP_SWAP] = 0,
+    [ONDA_OP_DUP] = 0,
+    [ONDA_OP_OVER] = 0,
+    [ONDA_OP_ROT] = 0,
+    [ONDA_OP_DROP] = 0,
+    [ONDA_OP_JUMP] = 2,
+    [ONDA_OP_JUMP_IF] = 2,
+    [ONDA_OP_DEC_JUMP_IF_NZ] = 2,
+    [ONDA_OP_PRINT] = 0,
+    [ONDA_OP_PRINT_STR] = 0,
+};
+
+void onda_vm_print_bytecode(const uint8_t* code, size_t code_size) {
+  for (size_t i = 0; i < code_size; i++) {
+    uint8_t opcode = code[i];
+    printf("%04zu: %s", i, opcode_to_str[opcode]);
+    size_t arg_bytes = opcode_args_byte[opcode];
+    for (size_t j = 0; j < arg_bytes; j++) {
+      printf(" %02X", code[i + 1 + j]);
+    }
+    printf("\n");
+    i += arg_bytes;
+  }
 }
 
 int onda_vm_run(onda_vm_t* vm) {
@@ -58,6 +138,7 @@ int onda_vm_run(onda_vm_t* vm) {
       [ONDA_OP_DROP] = &&op_drop,
       [ONDA_OP_JUMP] = &&op_jmp,
       [ONDA_OP_JUMP_IF] = &&op_jmp_if,
+      [ONDA_OP_DEC_JUMP_IF_NZ] = &&op_dev_jmp_if_nz,
       [ONDA_OP_PRINT] = &&op_print,
       [ONDA_OP_PRINT_STR] = &&op_print_str,
   };
@@ -177,6 +258,14 @@ op_jmp:
 op_jmp_if:
   memcpy(&jmp_offset, &vm->code[vm->pc], 2);
   if (vm->stack[--vm->sp])
+    vm->pc += jmp_offset;
+  else
+    vm->pc += 2;
+  DISPATCH();
+op_dev_jmp_if_nz:
+  memcpy(&jmp_offset, &vm->code[vm->pc], 2);
+  vm->stack[vm->sp - 1]--;
+  if (vm->stack[vm->sp - 1] != 0)
     vm->pc += jmp_offset;
   else
     vm->pc += 2;

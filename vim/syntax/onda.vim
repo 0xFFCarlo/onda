@@ -25,10 +25,8 @@ syntax match ondaLabel /\v\@[A-Za-z_][A-Za-z0-9_]*/
 
 " --- Keywords / ops (your list)
 " Note: '.' is special in regex, so we escape it.
-syntax keyword ondaKeyword and drop dup jmp jmp_if or over ret rot swap
+syntax keyword ondaKeyword print prints and drop dup jmp jmp_if dec_jmp_if_nz or over ret rot swap
 syntax match   ondaKeyword /\v\.(s)?\>/
-" If you want ONLY '.' and '.s' (not '.anything'), use:
-" syntax match ondaKeyword /\v\.(s)?\ze(\s|$)/
 
 " --- Identifiers (everything else word-like)
 " Mark as Identifier so it's distinct from keywords/labels/numbers

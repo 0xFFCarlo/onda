@@ -11,6 +11,7 @@ typedef enum onda_op_type {
   ONDA_OP_RET = 0,
   ONDA_OP_JUMP,
   ONDA_OP_JUMP_IF,
+  ONDA_OP_DEC_JUMP_IF_NZ,
   // Arithmetic Operations
   ONDA_OP_ADD,
   ONDA_OP_SUB,
@@ -59,6 +60,7 @@ int onda_vm_load_code(onda_vm_t* vm,
                       const uint8_t* code,
                       const size_t entry_pc,
                       const size_t code_size);
+void onda_vm_print_bytecode(const uint8_t* code, size_t code_size);
 int onda_vm_run(onda_vm_t* vm);
 void onda_vm_free(onda_vm_t* vm);
 

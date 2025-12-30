@@ -1,0 +1,12 @@
+
+: dump dup print ;
+
+@main
+    10 # Temperature in C
+    dump
+    15 > jmp_if done
+        "Temperature is cold\n" prints
+        ret
+    @done
+    "Temperature is warm\n" prints
+    ret

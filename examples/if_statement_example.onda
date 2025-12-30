@@ -1,7 +1,6 @@
-10 # Temperature in C
-15 > jmp_if done
-  "Temperature is cold\n" .s
+10 15 > jmp_if done
+  "Temperature is cold\n" prints
   ret
 @done
-"Temperature is warm\n" .s
+"Temperature is warm\n" prints
 ret

@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 size_t onda_comp_aarch64(const uint8_t* bytecode,
+                         const size_t bytecode_entry_pc,
                          size_t bytecode_size,
                          uint8_t** out_machine_code,
                          size_t* out_machine_code_size);

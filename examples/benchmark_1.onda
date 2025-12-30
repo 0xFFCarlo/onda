@@ -1,0 +1,7 @@
+1
+
+100000000 @loop
+  swap 3 * 1 + swap
+dec_jmp_if_nz loop drop
+#-- dup 0 > jmp_if loop drop
+ret
