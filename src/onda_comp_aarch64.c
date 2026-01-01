@@ -11,63 +11,43 @@
 #define ONDA_MCODE_INIT_CAP     512
 #define ONDA_MAX_OP_INSTR_COUNT 6 // max instructions per opcode
 
-#define AA64_SAVE_SP_X20      (0x910003F4)     // mov x20, sp
-#define AA64_SAVE_LR_x19      (0xAA1E03F3)     // mov x19, x30
-#define AA64_RESTORE_SP_X20   (0x9100029F)     // mov sp, x20
-#define AA64_RESTORE_LR_x19   (0xAA1303FE)     // mov x30, x19
-#define AA64_PUSH_X0_STACK    (0xF81F0FE0)     // str x0, [sp, #-16]!
-#define AA64_POP_STACK(x)     (0xF84107E0 | x) // ldr xX, [sp], #16
-#define AA64_STORE_X0_STACK   (0xF90003E0)     // str x0, [sp]
-#define AA64_LOAD_STACK(x)    (0xF94003E0 | x) // ldr xX, [sp]
-#define AA64_BLR_X16          (0xD63F0200)     // blr x16
-#define AA64_RET              (0xD65F03C0)     // ret
-#define AA64_MOV(x, y)        (0xAA0003E0 | (y << 16) | x) // mov xX, xY
-#define AA64_ADD(dst, a, b)   (0x8B000000 | (b << 16) | (a << 5) | dst)
-#define AA64_SUB(dst, a, b)   (0xCB000000 | (b << 16) | (a << 5) | dst)
-#define AA64_MUL(dst, a, b)   (0x9B007C00 | (b << 16) | (a << 5) | dst)
-#define AA64_UDIV(dst, a, b)  (0x9AC00800 | (b << 16) | (a << 5) | dst)
-#define AA64_UDIV_X2_X1_X0    (0x9AC00822) // udiv x2, x1, x0
-#define AA64_MSUB_X0_X2_X0_X1 (0x9B008440) // msub x0, x2, x0, x1
-#define AA64_INC_X0           (0x91000400) // add x0, x0, #1
-#define AA64_DEC_X0           (0xD1000400) // sub x0, x0, #1
-#define AA64_AND(dst, a, b)   (0x8A000000 | (b << 16) | (a << 5) | dst)
-#define AA64_ORR(dst, a, b)   (0xAA000000 | (b << 16) | (a << 5) | dst)
-#define AA64_NOT_X0_X0        (0xAA2003E0) // orn x0, x0, xzr
-#define AA64_CMP_X0_0         (0xF100001F) // cmp x0, #0
-#define AA64_CMP_X1_X0        (0xEB00003F) // cmp x1, x0
-#define AA64_CSET_X0_NE       (0x9A9F07E0) // cset x0, ne
-#define AA64_CSET_X0_EQ       (0x9A9F17E0) // cset x0, eq
-#define AA64_CSET_X0_LT       (0x9A9FA7E0) // cset x0, lt
-#define AA64_CSET_X0_GT       (0x9A9FD7E0) // cset x0, gt
-#define AA64_CSET_X0_LTE      (0x9A9FC7E0) // cset x0, le
-#define AA64_CSET_X0_GTE      (0x9A9FB7E0) // cset x0, ge
+#define AA64_SAVE_SP_X20     (0x910003F4)                 // mov x20, sp
+#define AA64_SAVE_LR_x19     (0xAA1E03F3)                 // mov x19, x30
+#define AA64_RESTORE_SP_X20  (0x9100029F)                 // mov sp, x20
+#define AA64_RESTORE_LR_x19  (0xAA1303FE)                 // mov x30, x19
+#define AA64_PUSH_X0_STACK   (0xF81F0FE0)                 // str x0, [sp, #-16]!
+#define AA64_POP_STACK(x)    (0xF84107E0 | x)             // ldr xX, [sp], #16
+#define AA64_STORE_X0_STACK  (0xF90003E0)                 // str x0, [sp]
+#define AA64_LOAD_STACK(x)   (0xF94003E0 | x)             // ldr xX, [sp]
+#define AA64_BLR_X16         (0xD63F0200)                 // blr x16
+#define AA64_RET             (0xD65F03C0)                 // ret
+#define AA64_MOV(x, y)       (0xAA0003E0 | (y << 16) | x) // mov xX, xY
+#define AA64_ADD(dst, a, b)  (0x8B000000 | (b << 16) | (a << 5) | dst)
+#define AA64_SUB(dst, a, b)  (0xCB000000 | (b << 16) | (a << 5) | dst)
+#define AA64_MUL(dst, a, b)  (0x9B007C00 | (b << 16) | (a << 5) | dst)
+#define AA64_UDIV(dst, a, b) (0x9AC00800 | (b << 16) | (a << 5) | dst)
+#define AA64_MSUB(dst, n, m, a)                                                \
+  (0x9B008000 | (((m)&31u) << 16) | (((a)&31u) << 10) | (((n)&31u) << 5) |     \
+   ((dst)&31u))
+#define AA64_INC_X0         (0x91000400) // add x0, x0, #1
+#define AA64_DEC_X0         (0xD1000400) // sub x0, x0, #1
+#define AA64_AND(dst, a, b) (0x8A000000 | (b << 16) | (a << 5) | dst)
+#define AA64_ORR(dst, a, b) (0xAA000000 | (b << 16) | (a << 5) | dst)
+#define AA64_NOT_X0_X0      (0xAA2003E0) // orn x0, x0, xzr
+#define AA64_CMP_X0_0       (0xF100001F) // cmp x0, #0
+#define AA64_CMP(n, m)      (0xEB00001Fu | (((m)&31u) << 16) | (((n)&31u) << 5))
+#define AA64_CSET_X0_NE     (0x9A9F07E0) // cset x0, ne
+#define AA64_CSET_X0_EQ     (0x9A9F17E0) // cset x0, eq
+#define AA64_CSET_X0_LT     (0x9A9FA7E0) // cset x0, lt
+#define AA64_CSET_X0_GT     (0x9A9FD7E0) // cset x0, gt
+#define AA64_CSET_X0_LTE    (0x9A9FC7E0) // cset x0, le
+#define AA64_CSET_X0_GTE    (0x9A9FB7E0) // cset x0, ge
 // move 16-bit immediate into 64-bit register and zero other bits
 #define AA64_MOVZ(dst, imm16, shift)                                           \
   (0xD2800000 | (((shift) / 16) << 21) | ((uint32_t)(imm16) << 5) | (dst))
 // move 16-bit immediate into 64-bit register, keeping other bits
 #define AA64_MOVK(dst, imm16, shift)                                           \
   (0xF2800000 | (((shift) / 16) << 21) | ((uint32_t)(imm16) << 5) | (dst))
-
-static inline bool op_consumes_stack(uint8_t opcode) {
-  switch (opcode) {
-  case ONDA_OP_ADD:
-  case ONDA_OP_SUB:
-  case ONDA_OP_MUL:
-  case ONDA_OP_DIV:
-  case ONDA_OP_MOD:
-  case ONDA_OP_AND:
-  case ONDA_OP_OR:
-  case ONDA_OP_EQ:
-  case ONDA_OP_NEQ:
-  case ONDA_OP_LT:
-  case ONDA_OP_GT:
-  case ONDA_OP_LTE:
-  case ONDA_OP_GTE:
-    return true;
-  default:
-    return false;
-  }
-}
 
 typedef struct onda_unresolved_jump_t {
   size_t mcode_pos;
@@ -90,7 +70,6 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
   uint16_t lo0, hi0, lo1, hi1;
   int16_t jmp_offset;
   onda_unresolved_jump_t* unresolved_jumps = NULL;
-  bool tos_in_x1 = false;
 
   memset(bcode_to_mcode, -1, bytecode_size * sizeof(int32_t));
 
@@ -117,10 +96,8 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
 
   // Prologue: save lr and sp
   EMIT2(AA64_SAVE_SP_X20, AA64_SAVE_LR_x19);
-  if (bytecode_entry_pc > 0) {
+  if (bytecode_entry_pc > 0)
     EMIT_UNRESOLVED_JUMP(ONDA_OP_JUMP, bytecode_entry_pc, 0x14000000);
-    printf("Entry PC jump placeholder at mcode pos %zu\n", mcode_size - 1);
-  }
 
   while (bcode_pos < bytecode_size) {
 
@@ -163,8 +140,6 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
     }
 
     const uint8_t opcode = bytecode[bcode_pos++];
-    const uint8_t next_opcode =
-        (bcode_pos < bytecode_size) ? bytecode[bcode_pos] : 0;
     switch (opcode) {
     case ONDA_OP_PUSH_CONST_U8:
       EMIT2(AA64_PUSH_X0_STACK, AA64_MOVZ(0, bytecode[bcode_pos++], 0));
@@ -204,7 +179,7 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       EMIT2(AA64_POP_STACK(1), AA64_UDIV(0, 1, 0));
       break;
     case ONDA_OP_MOD:
-      EMIT3(AA64_POP_STACK(1), AA64_UDIV_X2_X1_X0, AA64_MSUB_X0_X2_X0_X1);
+      EMIT3(AA64_POP_STACK(1), AA64_UDIV(2, 1, 0), AA64_MSUB(0, 2, 0, 1));
       break;
     case ONDA_OP_AND:
       EMIT2(AA64_POP_STACK(1), AA64_AND(0, 1, 0));
@@ -213,22 +188,22 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       EMIT2(AA64_POP_STACK(1), AA64_ORR(0, 1, 0));
       break;
     case ONDA_OP_EQ:
-      EMIT3(AA64_POP_STACK(1), AA64_CMP_X1_X0, AA64_CSET_X0_EQ);
+      EMIT3(AA64_POP_STACK(1), AA64_CMP(1, 0), AA64_CSET_X0_EQ);
       break;
     case ONDA_OP_NEQ:
-      EMIT3(AA64_POP_STACK(1), AA64_CMP_X1_X0, AA64_CSET_X0_NE);
+      EMIT3(AA64_POP_STACK(1), AA64_CMP(1, 0), AA64_CSET_X0_NE);
       break;
     case ONDA_OP_LT:
-      EMIT3(AA64_POP_STACK(1), AA64_CMP_X1_X0, AA64_CSET_X0_LT);
+      EMIT3(AA64_POP_STACK(1), AA64_CMP(1, 0), AA64_CSET_X0_LT);
       break;
     case ONDA_OP_GT:
-      EMIT3(AA64_POP_STACK(1), AA64_CMP_X1_X0, AA64_CSET_X0_GT);
+      EMIT3(AA64_POP_STACK(1), AA64_CMP(1, 0), AA64_CSET_X0_GT);
       break;
     case ONDA_OP_LTE:
-      EMIT3(AA64_POP_STACK(1), AA64_CMP_X1_X0, AA64_CSET_X0_LTE);
+      EMIT3(AA64_POP_STACK(1), AA64_CMP(1, 0), AA64_CSET_X0_LTE);
       break;
     case ONDA_OP_GTE:
-      EMIT3(AA64_POP_STACK(1), AA64_CMP_X1_X0, AA64_CSET_X0_GTE);
+      EMIT3(AA64_POP_STACK(1), AA64_CMP(1, 0), AA64_CSET_X0_GTE);
       break;
     case ONDA_OP_SWAP:
       EMIT3(AA64_LOAD_STACK(1), AA64_STORE_X0_STACK, AA64_MOV(0, 1));

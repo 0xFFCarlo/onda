@@ -12,8 +12,8 @@
 typedef struct test_case_t {
   const char* program;
   size_t stack_size;
-  uint64_t expected_result_a;
-  uint64_t expected_result_b;
+  int64_t expected_result_a;
+  int64_t expected_result_b;
 } test_case_t;
 
 static const test_case_t tests[] = {
@@ -30,10 +30,13 @@ static const test_case_t tests[] = {
     {"10 ret @main 42 ret", 1, 42},
 
     // --- ADD (+): minimal extra coverage (order shouldn't matter)
-    {"2 1 + ret", 1, 3},
+    {"2 4 + ret", 1, 6},
 
     // --- SUB (-): cover negative result explicitly
-    {"0 1 - ret", 1, -1},
+    {"4 1 - ret", 1, 3},
+   
+    // --- SUB (-): negative result
+    {"1 4 - ret", 1, -3},
 
     // --- INC (++)
     {"41 ++ ret", 1, 42},
@@ -150,7 +153,7 @@ int main() {
       goto failed;
     }
     if (tc->stack_size > 0) {
-      uint64_t val = vm->stack[vm->sp - 1];
+      int64_t val = vm->stack[vm->sp - 1];
       if (val != tc->expected_result_a) {
         fprintf(stderr,
                 "Test %zu failed: expected TOS %llu, got %llu\n",
@@ -161,7 +164,7 @@ int main() {
       }
     }
     if (tc->stack_size > 1) {
-      uint64_t val = vm->stack[vm->sp - 2];
+      int64_t val = vm->stack[vm->sp - 2];
       if (val != tc->expected_result_b) {
         fprintf(stderr,
                 "Test %zu failed: expected TOS-1 %llu, got %llu\n",
