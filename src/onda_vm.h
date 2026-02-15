@@ -10,8 +10,7 @@ typedef enum onda_op_type {
   // Control Flow
   ONDA_OP_RET = 0,
   ONDA_OP_JUMP,
-  ONDA_OP_JUMP_IF,
-  ONDA_OP_DEC_JUMP_IF_NZ,
+  ONDA_OP_JUMP_IF_FALSE,
   // Arithmetic Operations
   ONDA_OP_ADD,
   ONDA_OP_SUB,

@@ -1,6 +1,7 @@
-10 15 > jmp_if done
+if 10 15 > then 
   "Temperature is cold\n" prints
   ret
-@done
+else
 "Temperature is warm\n" prints
+endif
 ret

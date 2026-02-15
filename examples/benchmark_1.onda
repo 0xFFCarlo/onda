@@ -1,6 +1,8 @@
 1
-
-100000000 @loop
+100000000
+while dup do
   swap 3 * 1 + swap
-dec_jmp_if_nz loop drop
+  --
+endwhile
+drop
 ret

@@ -54,8 +54,7 @@ static char* opcode_to_str[] = {
     [ONDA_OP_ROT] = "ROT",
     [ONDA_OP_DROP] = "DROP",
     [ONDA_OP_JUMP] = "JUMP",
-    [ONDA_OP_JUMP_IF] = "JUMP_IF",
-    [ONDA_OP_DEC_JUMP_IF_NZ] = "DEC_JUMP_IF_NZ",
+    [ONDA_OP_JUMP_IF_FALSE] = "JUMP_IF_FALSE",
     [ONDA_OP_PRINT] = "PRINT",
     [ONDA_OP_PRINT_STR] = "PRINT_STR",
 };
@@ -87,8 +86,7 @@ static uint8_t opcode_args_byte[] = {
     [ONDA_OP_ROT] = 0,
     [ONDA_OP_DROP] = 0,
     [ONDA_OP_JUMP] = 2,
-    [ONDA_OP_JUMP_IF] = 2,
-    [ONDA_OP_DEC_JUMP_IF_NZ] = 2,
+    [ONDA_OP_JUMP_IF_FALSE] = 2,
     [ONDA_OP_PRINT] = 0,
     [ONDA_OP_PRINT_STR] = 0,
 };
@@ -137,8 +135,7 @@ int onda_vm_run(onda_vm_t* vm) {
       [ONDA_OP_ROT] = &&op_rot,
       [ONDA_OP_DROP] = &&op_drop,
       [ONDA_OP_JUMP] = &&op_jmp,
-      [ONDA_OP_JUMP_IF] = &&op_jmp_if,
-      [ONDA_OP_DEC_JUMP_IF_NZ] = &&op_dev_jmp_if_nz,
+      [ONDA_OP_JUMP_IF_FALSE] = &&op_jmp_if_false,
       [ONDA_OP_PRINT] = &&op_print,
       [ONDA_OP_PRINT_STR] = &&op_print_str,
   };
@@ -255,9 +252,9 @@ op_jmp:
   memcpy(&jmp_offset, &vm->code[vm->pc], 2);
   vm->pc += jmp_offset;
   DISPATCH();
-op_jmp_if:
+op_jmp_if_false:
   memcpy(&jmp_offset, &vm->code[vm->pc], 2);
-  if (vm->stack[--vm->sp])
+  if (vm->stack[--vm->sp] == 0)
     vm->pc += jmp_offset;
   else
     vm->pc += 2;

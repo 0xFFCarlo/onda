@@ -122,7 +122,7 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       }
 
       const int32_t aa_jmp_offset = mcode_size - jmp->mcode_pos;
-      if (jmp->jump_type == ONDA_OP_JUMP_IF) {
+      if (jmp->jump_type == ONDA_OP_JUMP_IF_FALSE) {
         const uint32_t imm19 = (uint32_t)aa_jmp_offset & 0x7FFFFu;
         const uint32_t imm19_mask = 0x00FFFFE0u; // bits [23:5]
         const uint64_t original = mcode[jmp->mcode_pos];
@@ -246,30 +246,17 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       }
       bcode_pos += 2;
     } break;
-    case ONDA_OP_JUMP_IF: {
+    case ONDA_OP_JUMP_IF_FALSE: {
       EMIT(AA64_MOV(1, 0));
       EMIT(AA64_POP_STACK(0));
       memcpy(&jmp_offset, &bytecode[bcode_pos], 2);
       if (bcode_to_mcode[bcode_pos + jmp_offset] == -1) {
-        EMIT_UNRESOLVED_JUMP(ONDA_OP_JUMP_IF, jmp_offset, 0xB5000000 | 0x1);
+        EMIT_UNRESOLVED_JUMP(ONDA_OP_JUMP_IF_FALSE, jmp_offset, 0xB4000000 | 0x1);
       } else {
         const int32_t aa_jmp_offset =
             bcode_to_mcode[bcode_pos + jmp_offset] - mcode_size;
         const uint32_t imm19 = (uint32_t)(aa_jmp_offset & 0x7FFFF);
         EMIT(0xB5000000 | (imm19 << 5) | 0x1); // cbnz x1, label
-      }
-      bcode_pos += 2;
-    } break;
-    case ONDA_OP_DEC_JUMP_IF_NZ: {
-      EMIT(AA64_DEC_X0);
-      memcpy(&jmp_offset, &bytecode[bcode_pos], 2);
-      if (bcode_to_mcode[bcode_pos + jmp_offset] == -1) {
-        EMIT_UNRESOLVED_JUMP(ONDA_OP_JUMP_IF, jmp_offset, 0xB5000000 | 0x0);
-      } else {
-        const int32_t aa_jmp_offset =
-            bcode_to_mcode[bcode_pos + jmp_offset] - mcode_size;
-        const uint32_t imm19 = (uint32_t)(aa_jmp_offset & 0x7FFFF);
-        EMIT(0xB5000000 | (imm19 << 5) | 0x0); // cbnz x0, label
       }
       bcode_pos += 2;
     } break;

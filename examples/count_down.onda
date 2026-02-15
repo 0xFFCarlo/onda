@@ -1,6 +1,6 @@
-10 @loop
-    --
-    dup print
-dup 0 > jmp_if loop
+10
+while dup 0 > do
+  dup print --
+endwhile
 drop
 ret

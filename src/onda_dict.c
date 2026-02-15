@@ -1,7 +1,5 @@
 #include "onda_dict.h"
-
 #include "onda_util.h"
-
 #include <string.h>
 
 static inline uint32_t hash_str(const char* s, size_t len) {

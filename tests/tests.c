@@ -1,6 +1,6 @@
 #include "../src/onda_comp_aarch64.h"
+#include "../src/onda_compiler.h"
 #include "../src/onda_jit.h"
-#include "../src/onda_parser.h"
 #include "../src/onda_vm.h"
 
 #include <stddef.h>
@@ -26,15 +26,12 @@ static const test_case_t tests[] = {
     // --- PUSH MULTIPLE CONSTANTS
     {"10 20 ret", 2, 20, 10},
 
-    // --- ENTRY POINT LABEL
-    {"10 ret @main 42 ret", 1, 42},
-
     // --- ADD (+): minimal extra coverage (order shouldn't matter)
     {"2 4 + ret", 1, 6},
 
     // --- SUB (-): cover negative result explicitly
     {"4 1 - ret", 1, 3},
-   
+
     // --- SUB (-): negative result
     {"1 4 - ret", 1, -3},
 
@@ -105,34 +102,25 @@ static const test_case_t tests[] = {
     // rot: (a b c -- b c a)
     {"1 2 3 rot ret", 3, 2, 1},
 
-    // --- jmp (unconditional) ---
+    // If condition
+    {"if 1 then 2 endif ret", 1, 2},
+    {"if 0 then 2 endif ret", 0, 0},
+    {"if 2 3 > then 4 4 + else 5 5 + endif ret", 1, 10},
+    {"if 2 3 < then 4 4 + else 5 5 + endif ret", 1, 8},
+    {"if 1 then 3 else 4 endif ret", 1, 3},
+    {"if 0 then 3 else 4 endif ret", 1, 4},
 
-    // Jump forward, skipping "111", land on label and push 222
-    {"jmp end 111 ret @end 222 ret", 1, 222},
-
-    // Jump forward to return immediately (skips pushing anything)
-    {"jmp out 123 ret @out ret", 0, 0},
-
-    // --- jmp_if (conditional) ---
-
-    // Condition false: do not jump, returns 10
-    {"0 jmp_if L 10 ret @L 20 ret", 1, 10},
-
-    // Condition true: jump, returns 20
-    {"1 jmp_if L 10 ret @L 20 ret", 1, 20},
-
-    // Using a comparison
-    {"10 15 > jmp_if cold 200 ret @cold 100 ret", 1, 200},
-
-    // --- loop (uses both jmp_if + jmp) ---
-    // Countdown loop: start at 3, decrement until 0, then return 0.
-    // Stack stays 1-deep throughout.
-    {"3 @loop dup 0 > jmp_if dec ret @dec -- jmp loop", 1, 0},
+    // While loop
+    {"10 while dup 2 > do -- endwhile ret", 1, 2},
+    {"5 while dup 0 > do 1 - endwhile drop ret", 0, 0},
 };
 
 int main() {
+  onda_lexer_t lexer;
+  onda_code_obj_t code_obj;
   uint8_t codebuf[1024];
-  size_t code_size = 0;
+  code_obj.code = codebuf;
+  code_obj.capacity = 1024;
   size_t entry_pc = 0;
   size_t i;
   onda_vm_t* vm = onda_vm_new();
@@ -140,9 +128,16 @@ int main() {
   size_t machine_code_size = 0;
 
   for (i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
+    code_obj.size = 0;
+    code_obj.entry_pc = 0;
+    lexer.src = tests[i].program;
+    lexer.column = 0;
+    lexer.line = 0;
+    lexer.pos = 0;
     const test_case_t* tc = &tests[i];
-    onda_parse(tc->program, codebuf, CODE_BUF_SIZE, &code_size, &entry_pc);
-    onda_vm_load_code(vm, codebuf, entry_pc, code_size);
+    onda_compile(&lexer, &code_obj);
+    onda_vm_print_bytecode(codebuf, code_obj.size);
+    onda_vm_load_code(vm, codebuf, entry_pc, code_obj.size);
     onda_vm_run(vm);
     if (vm->sp != tc->stack_size) {
       fprintf(stderr,
@@ -178,7 +173,7 @@ int main() {
     // JIT test
     onda_comp_aarch64(codebuf,
                       entry_pc,
-                      code_size,
+                      code_obj.size,
                       &machine_code,
                       &machine_code_size);
     uint64_t tos = onda_jit_run(machine_code, machine_code_size);
