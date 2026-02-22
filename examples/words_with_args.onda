@@ -1,0 +1,2 @@
+: dist ( a b ) a a * b b * + ;
+: main 3 4 dist print ;

@@ -14,6 +14,7 @@ typedef struct test_case_t {
   size_t stack_size;
   int64_t expected_result_a;
   int64_t expected_result_b;
+  bool debug_mode;
 } test_case_t;
 
 static const test_case_t tests[] = {
@@ -113,31 +114,51 @@ static const test_case_t tests[] = {
     // While loop
     {"10 while dup 2 > do -- endwhile ret", 1, 2},
     {"5 while dup 0 > do 1 - endwhile drop ret", 0, 0},
+
+    // Words
+    {":square  dup * ; "
+     ":main    5 square ; ",
+     1,
+     25},
+    {":factorial  if dup 1 <= then drop 1 else dup 1 - factorial * endif ; "
+     ":main       5 factorial ; ",
+     1,
+     120},
+    {":fun_c  3 ; "
+     ":fun_b  2 fun_c + ; "
+     ":fun_a  1 fun_b + ; "
+     ":main   fun_a ; ",
+     1,
+     6},
 };
 
 int main() {
   onda_lexer_t lexer;
-  onda_code_obj_t code_obj;
-  uint8_t codebuf[1024];
-  code_obj.code = codebuf;
-  code_obj.capacity = 1024;
-  size_t entry_pc = 0;
+  onda_code_obj_t cobj = {0};
   size_t i;
   onda_vm_t* vm = onda_vm_new();
   uint8_t* machine_code = NULL;
   size_t machine_code_size = 0;
+  uint64_t frame_stack[ONDA_VM_FRAME_STACK_SIZE];
 
+  // Run tests using VM
+  printf("Testing with VM:\n");
   for (i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
-    code_obj.size = 0;
-    code_obj.entry_pc = 0;
+    onda_code_obj_init(&cobj, CODE_BUF_SIZE);
+    cobj.size = 0;
+    cobj.entry_pc = 0;
     lexer.src = tests[i].program;
     lexer.column = 0;
     lexer.line = 0;
     lexer.pos = 0;
     const test_case_t* tc = &tests[i];
-    onda_compile(&lexer, &code_obj);
-    onda_vm_print_bytecode(codebuf, code_obj.size);
-    onda_vm_load_code(vm, codebuf, entry_pc, code_obj.size);
+    if (onda_compile(&lexer, &cobj) != 0) {
+      fprintf(stderr, "Test %zu failed: compilation error\n", i);
+      goto failed;
+    }
+    // onda_dict_free(&cobj.words_map);
+    onda_vm_load_code(vm, cobj.code, cobj.entry_pc, cobj.size);
+    vm->debug_mode = tc->debug_mode;
     onda_vm_run(vm);
     if (vm->sp != tc->stack_size) {
       fprintf(stderr,
@@ -148,7 +169,7 @@ int main() {
       goto failed;
     }
     if (tc->stack_size > 0) {
-      int64_t val = vm->stack[vm->sp - 1];
+      int64_t val = vm->data_stack[vm->sp - 1];
       if (val != tc->expected_result_a) {
         fprintf(stderr,
                 "Test %zu failed: expected TOS %llu, got %llu\n",
@@ -159,7 +180,7 @@ int main() {
       }
     }
     if (tc->stack_size > 1) {
-      int64_t val = vm->stack[vm->sp - 2];
+      int64_t val = vm->data_stack[vm->sp - 2];
       if (val != tc->expected_result_b) {
         fprintf(stderr,
                 "Test %zu failed: expected TOS-1 %llu, got %llu\n",
@@ -170,10 +191,33 @@ int main() {
       }
     }
 
+    onda_code_obj_free(&cobj);
+    printf("Test %zu passed.\n", i);
+  }
+
+  onda_vm_free(vm);
+
+  // Run tests using JIT only (without VM execution)
+  printf("\nTesting with JIT:\n");
+  for (i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
+    onda_code_obj_init(&cobj, CODE_BUF_SIZE);
+    cobj.size = 0;
+    cobj.entry_pc = 0;
+    lexer.src = tests[i].program;
+    lexer.column = 0;
+    lexer.line = 0;
+    lexer.pos = 0;
+    const test_case_t* tc = &tests[i];
+    if (onda_compile(&lexer, &cobj) != 0) {
+      fprintf(stderr, "Test %zu failed: compilation error\n", i);
+      goto failed;
+    }
     // JIT test
-    onda_comp_aarch64(codebuf,
-                      entry_pc,
-                      code_obj.size,
+    uint64_t* frame_bp = frame_stack + ONDA_VM_FRAME_STACK_SIZE;
+    onda_comp_aarch64(cobj.code,
+                      cobj.entry_pc,
+                      cobj.size,
+                      frame_bp,
                       &machine_code,
                       &machine_code_size);
     uint64_t tos = onda_jit_run(machine_code, machine_code_size);
@@ -195,10 +239,9 @@ int main() {
       }
     }
 
+    onda_code_obj_free(&cobj);
     printf("Test %zu passed.\n", i);
   }
-
-  onda_vm_free(vm);
 
   return 0;
 failed:

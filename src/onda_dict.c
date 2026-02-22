@@ -1,5 +1,7 @@
 #include "onda_dict.h"
+
 #include "onda_util.h"
+
 #include <string.h>
 
 static inline uint32_t hash_str(const char* s, size_t len) {
@@ -21,7 +23,8 @@ static void onda_dict_resize(onda_dict_t* d, size_t new_cap) {
     if (old[i].key)
       onda_dict_put(d, old[i].key, old[i].key_len, old[i].value);
   }
-  onda_free(old);
+  if (old)
+    onda_free(old);
 }
 
 void onda_dict_init(onda_dict_t* d) {
@@ -46,7 +49,7 @@ void onda_dict_free(onda_dict_t* d) {
 int onda_dict_get(onda_dict_t* d,
                   const char* key,
                   size_t key_len,
-                  uint32_t* out) {
+                  uint64_t* out) {
   if (!d->slots)
     return 1;
 
@@ -71,7 +74,7 @@ int onda_dict_get(onda_dict_t* d,
 void onda_dict_put(onda_dict_t* d,
                    const char* key,
                    size_t key_len,
-                   uint32_t value) {
+                   uint64_t value) {
   if (d->count * 2 >= d->capacity)
     onda_dict_resize(d, d->capacity ? d->capacity * 2 : 16);
 

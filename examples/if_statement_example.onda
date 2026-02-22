@@ -1,7 +1,9 @@
-if 10 15 > then 
-  "Temperature is cold\n" prints
-  ret
-else
-"Temperature is warm\n" prints
-endif
-ret
+: main
+  if 10 15 > then 
+    "Temperature is cold\n" prints
+    ret
+  else
+  "Temperature is warm\n" prints
+   ret
+  endif
+;

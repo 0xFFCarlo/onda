@@ -171,6 +171,10 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
     return tok1(lexer, t, TOKEN_COLON);
   case ';':
     return tok1(lexer, t, TOKEN_SEMICOLON);
+  case '(':
+    return tok1(lexer, t, TOKEN_LPAREN);
+  case ')':
+    return tok1(lexer, t, TOKEN_RPAREN);
   case '"': {
     int rc = lex_string(lexer, &t->start, &t->len);
     if (rc) {
@@ -213,12 +217,6 @@ void onda_token_peek(onda_lexer_t* lexer, onda_token_t* t) {
 }
 
 // Helper macros for emitting bytecode with bounds checking
-#define CODE_PUSH_BYTE(val) cobj->code[cobj->size++] = (val)
-#define CODE_PUSH_BYTES(src, len)                                              \
-  do {                                                                         \
-    memcpy(&cobj->code[cobj->size], (src), (len));                             \
-    cobj->size += (len);                                                       \
-  } while (0)
 #define CODE_CHECK_SPACE(bytes_needed)                                         \
   do {                                                                         \
     if (cobj->size + (bytes_needed) > cobj->capacity) {                        \
@@ -226,6 +224,73 @@ void onda_token_peek(onda_lexer_t* lexer, onda_token_t* t) {
       return -1;                                                               \
     }                                                                          \
   } while (0)
+#define CODE_PUSH_BYTE(val)                                                    \
+  CODE_CHECK_SPACE(1);                                                         \
+  cobj->code[cobj->size++] = (val)
+#define CODE_PUSH_BYTES(src, len)                                              \
+  do {                                                                         \
+    CODE_CHECK_SPACE(len);                                                     \
+    memcpy(&cobj->code[cobj->size], (src), (len));                             \
+    cobj->size += (len);                                                       \
+  } while (0)
+
+// Create new scope and push onto code object's scope stack
+static inline void onda_scope_push(onda_code_obj_t* code) {
+  onda_scope_t* new_scope = (onda_scope_t*)onda_malloc(sizeof(onda_scope_t));
+  onda_dict_init(&new_scope->locals);
+  new_scope->locals_count = 0;
+  new_scope->parent = code->current_scope;
+  code->current_scope = new_scope;
+}
+
+// Look up a variable name in the current scope stack.
+// If found, set local_id and return 0.
+static inline int onda_scope_get(onda_code_obj_t* code,
+                                 const char* name,
+                                 size_t name_len,
+                                 uint8_t* local_id) {
+  onda_scope_t* scope = code->current_scope;
+  uint64_t out_var_id;
+  while (scope) {
+    if (onda_dict_get(&scope->locals, name, name_len, &out_var_id) == 0) {
+      *local_id = (uint8_t)out_var_id;
+      return 0; // found
+    }
+    scope = scope->parent;
+  }
+  return -1; // not found
+}
+
+// Define a new variable in the current scope with the given name and local_id.
+static inline int onda_scope_set(onda_code_obj_t* code,
+                                 const char* name,
+                                 size_t name_len,
+                                 uint8_t local_id) {
+
+  onda_scope_t* scope = code->current_scope;
+  uint64_t existing_id;
+  if (onda_dict_get(&scope->locals, name, name_len, &existing_id) == 0) {
+    printf("Error: Variable '%.*s' already defined in this scope\n",
+           (int)name_len,
+           name);
+    return -1;
+  }
+  onda_dict_put(&scope->locals, name, name_len, local_id);
+  return 0;
+}
+
+// Pop the current scope off the stack, freeing its resources. Update parent
+// scope's peak locals count if needed.
+static inline void onda_scope_pop(onda_code_obj_t* code) {
+  onda_scope_t* scope = code->current_scope;
+  if (scope == NULL) {
+    printf("Error: No scope to pop\n");
+    return;
+  }
+  code->current_scope = scope->parent;
+  onda_dict_free(&scope->locals);
+  free(scope);
+}
 
 static int onda_compile_expr(onda_lexer_t* lexer, onda_code_obj_t* cobj);
 
@@ -258,13 +323,11 @@ static inline int onda_compile_until_ident(onda_lexer_t* lexer,
 }
 
 static int onda_compile_if(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
-  onda_token_t tok;
   int rc;
   rc = onda_compile_until_ident(lexer, cobj, "then", 4, NULL, 0);
   if (rc < 0)
     return rc;
 
-  CODE_CHECK_SPACE(1 + sizeof(int16_t));
   CODE_PUSH_BYTE(ONDA_OP_JUMP_IF_FALSE);
   size_t condition_jmp_pc = cobj->size;
   CODE_PUSH_BYTES(&(int16_t){0},
@@ -276,7 +339,6 @@ static int onda_compile_if(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   // If we ended on "else", we need to emit a jump over the else block
   size_t then_jmp_pc;
   if (rc == 0) {
-    CODE_CHECK_SPACE(1 + sizeof(int16_t));
     CODE_PUSH_BYTE(ONDA_OP_JUMP);
     then_jmp_pc = cobj->size;
     CODE_PUSH_BYTES(&(int16_t){0},
@@ -309,7 +371,6 @@ static int onda_compile_while(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   if (rc < 0)
     return rc;
 
-  CODE_CHECK_SPACE(1 + sizeof(int16_t));
   CODE_PUSH_BYTE(ONDA_OP_JUMP_IF_FALSE);
   size_t condition_jmp_pc = cobj->size;
   CODE_PUSH_BYTES(&(int16_t){0},
@@ -320,7 +381,6 @@ static int onda_compile_while(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
     return rc;
 
   // Emit jump back to loop start
-  CODE_CHECK_SPACE(1 + sizeof(int16_t));
   CODE_PUSH_BYTE(ONDA_OP_JUMP);
   size_t loop_end_jmp_pc = cobj->size;
   const int16_t loop_back_offset = (int16_t)(loop_start_pc - loop_end_jmp_pc);
@@ -331,6 +391,33 @@ static int onda_compile_while(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   int16_t condition_jmp_offset = (int16_t)(after_loop_pc - condition_jmp_pc);
   memcpy(&cobj->code[condition_jmp_pc], &condition_jmp_offset, sizeof(int16_t));
 
+  return 0;
+}
+
+static int onda_compile_store_local(onda_lexer_t* lexer,
+                                    onda_code_obj_t* cobj) {
+  onda_token_t tok;
+  onda_token_next(lexer, &tok);
+  if (tok.type != TOKEN_IDENTIFIER) {
+    fprintf(stderr,
+            "Expected local variable name after '->' at line %lu, column %lu\n",
+            lexer->line,
+            lexer->column);
+    return -1;
+  }
+  uint8_t local_id;
+  if (onda_scope_get(cobj, tok.start, tok.len, &local_id) != 0) {
+    fprintf(stderr,
+            "Undefined variable '%.*s' in store operation at line %lu, column "
+            "%lu\n",
+            tok.len,
+            tok.start,
+            lexer->line,
+            lexer->column);
+    return -1;
+  }
+  CODE_PUSH_BYTE(ONDA_OP_STORE_LOCAL);
+  CODE_PUSH_BYTE(local_id + ONDA_LOCALS_BASE_OFF);
   return 0;
 }
 
@@ -368,10 +455,146 @@ static const onda_imm_word_t imm_words[] = {
     {"print", ONDA_OP_PRINT},
     {"prints", ONDA_OP_PRINT_STR},
     {"ret", ONDA_OP_RET},
+    {"@", ONDA_OP_PUSH_FROM_ADDR},
+    {"!", ONDA_OP_STORE_TO_ADDR},
+    {"->", .handler = onda_compile_store_local},
     {"if", .handler = onda_compile_if},
     {"while", .handler = onda_compile_while},
 };
 static const size_t num_imm_words = sizeof(imm_words) / sizeof(imm_words[0]);
+
+static int onda_compile_word(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
+  onda_word_t word = {0};
+  onda_token_t tok;
+  onda_token_next(lexer, &tok);
+  if (tok.type != TOKEN_IDENTIFIER) {
+    fprintf(stderr,
+            "Expected word name after ':' at line %lu, column %lu\n",
+            lexer->line,
+            lexer->column);
+    return -1;
+  }
+
+  if (tok.len >= ONDA_MAX_WORD_LEN) {
+    fprintf(stderr,
+            "Word name '%.*s' at line %lu, column %lu exceeds max length of "
+            "%d\n",
+            tok.len,
+            tok.start,
+            lexer->line,
+            lexer->column,
+            ONDA_MAX_WORD_LEN - 1);
+  }
+
+  // Check that word definition does not match any immediate word
+  for (size_t i = 0; i < num_imm_words; i++) {
+    if (strlen(imm_words[i].name) == (size_t)tok.len &&
+        strncmp(imm_words[i].name, tok.start, (size_t)tok.len) == 0) {
+      fprintf(stderr,
+              "Word name '%.*s' at line %lu, column %lu conflicts with "
+              "immediate word name\n",
+              tok.len,
+              tok.start,
+              lexer->line,
+              lexer->column);
+      return -1;
+    }
+  }
+
+  // Check that word definition does not already exists
+  uint64_t word_id;
+  if (onda_dict_get(&cobj->words_map, tok.start, tok.len, &word_id) == 0) {
+    fprintf(stderr,
+            "Word name '%.*s' at line %lu, column %lu already defined\n",
+            tok.len,
+            tok.start,
+            lexer->line,
+            lexer->column);
+    return -1;
+  }
+
+  if (strncmp(tok.start, "main", tok.len) == 0)
+    cobj->entry_pc = cobj->size;
+
+  // Make word
+  strncpy(word.name, tok.start, (size_t)tok.len);
+  word.name_len = (size_t)tok.len;
+  word.pc = cobj->size;
+  onda_dict_put(&cobj->words_map, word.name, word.name_len, cobj->words_count);
+  cobj->words =
+      realloc(cobj->words, (cobj->words_count + 1) * sizeof(onda_word_t));
+
+  // new scope for word locals
+  onda_scope_push(cobj);
+
+  // Parse arguments if any
+  onda_token_peek(lexer, &tok);
+  if (tok.type == TOKEN_LPAREN) {
+    onda_token_next(lexer, &tok); // consume '('
+    do {
+      onda_token_peek(lexer, &tok);
+      if (tok.type == TOKEN_RPAREN) {
+        onda_token_next(lexer, &tok); // consume ')'
+        break;
+      }
+      if (tok.type != TOKEN_IDENTIFIER) {
+        fprintf(
+            stderr,
+            "Expected word argument name in word definition for word '%.*s' at "
+            "line %lu, column %lu\n",
+            (int)word.name_len,
+            word.name,
+            lexer->line,
+            lexer->column);
+        return -1;
+      }
+      onda_token_next(lexer, &tok); // consume argument name
+      if (onda_scope_set(cobj, tok.start, tok.len, word.locals_count++) != 0) {
+        fprintf(stderr,
+                "Failed to define argument '%.*s' in word definition for word "
+                "'%.*s' at line %lu, column %lu\n",
+                tok.len,
+                tok.start,
+                (int)word.name_len,
+                word.name,
+                lexer->line,
+                lexer->column);
+        return -1;
+      }
+      word.args_count++;
+    } while (true);
+  }
+
+  // Store new word
+  cobj->words[cobj->words_count++] = word;
+
+  // Compile word body until ';'
+  do {
+    onda_token_peek(lexer, &tok);
+    if (tok.type == TOKEN_SEMICOLON) {
+      CODE_PUSH_BYTE(ONDA_OP_RET);
+      onda_token_next(lexer, &tok); // consume ';'
+      break;
+    }
+    if (tok.type == TOKEN_COLON) {
+      fprintf(stderr,
+              "Nested word definition not allowed for word '%.*s' at line "
+              "%lu, column %lu\n",
+              tok.len,
+              tok.start,
+              lexer->line,
+              lexer->column);
+      return -1;
+    }
+    int rc = onda_compile_expr(lexer, cobj);
+    if (rc != 0)
+      return rc;
+  } while (true);
+
+  onda_scope_pop(cobj); // pop word scope
+
+  return 0;
+}
 
 static int onda_compile_expr(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
 
@@ -379,6 +602,9 @@ static int onda_compile_expr(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   onda_token_next(lexer, &tok);
 
   switch (tok.type) {
+  case TOKEN_COLON:
+    return onda_compile_word(lexer, cobj);
+    break;
   case TOKEN_IDENTIFIER:
     // Is it an immediate word
     for (size_t i = 0; i < num_imm_words; i++) {
@@ -388,13 +614,33 @@ static int onda_compile_expr(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
       if (imm_words[i].handler) {
         return imm_words[i].handler(lexer, cobj);
       } else {
-        CODE_CHECK_SPACE(1);
         CODE_PUSH_BYTE(imm_words[i].opcode);
         return 0;
       }
     }
 
-    // TODO: Is it a variable?
+    // Is it a defined word?
+    uint64_t word_id;
+    if (onda_dict_get(&cobj->words_map, tok.start, tok.len, &word_id) == 0) {
+      CODE_PUSH_BYTE(ONDA_OP_CALL);
+      CODE_PUSH_BYTE(cobj->words[word_id].args_count);
+      CODE_PUSH_BYTE(cobj->words[word_id].locals_count);
+      const size_t call_pc = cobj->size;
+      CODE_PUSH_BYTES(&word_id, sizeof(int32_t));
+      const size_t next_instr_pc = cobj->size;
+      const int32_t offset =
+          ((int32_t)cobj->words[word_id].pc - (int32_t)next_instr_pc);
+      memcpy(&cobj->code[call_pc], &offset, sizeof(int32_t));
+      return 0;
+    }
+
+    // Is it a local variable
+    uint8_t local_id;
+    if (onda_scope_get(cobj, tok.start, tok.len, &local_id) == 0) {
+      CODE_PUSH_BYTE(ONDA_OP_PUSH_LOCAL);
+      CODE_PUSH_BYTE(local_id + ONDA_LOCALS_BASE_OFF);
+      return 0;
+    }
 
     // TODO: Is it a C function call?
     printf("Unknown identifier '%.*s' at line %lu, column %lu\n",
@@ -405,16 +651,13 @@ static int onda_compile_expr(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
     return -1; // unknown identifier
   case TOKEN_NUMBER:
     if (tok.number <= 0x7F && tok.number >= -0x80) {
-      CODE_CHECK_SPACE(2);
       CODE_PUSH_BYTE(ONDA_OP_PUSH_CONST_U8);
       CODE_PUSH_BYTE((int8_t)tok.number);
-    } else if (tok.number <= 0x7FFFFFFF && tok.number >= -0x80000000) {
-      CODE_CHECK_SPACE(1 + sizeof(int32_t));
+    } else if ((tok.number <= INT32_MAX) && (tok.number >= INT32_MIN)) {
       CODE_PUSH_BYTE(ONDA_OP_PUSH_CONST_U32);
       const uint32_t val = (int32_t)(tok.number);
       CODE_PUSH_BYTES(&val, sizeof(int32_t));
     } else {
-      CODE_CHECK_SPACE(1 + sizeof(int64_t));
       CODE_PUSH_BYTE(ONDA_OP_PUSH_CONST_U64);
       const uint64_t val = (int64_t)(tok.number);
       CODE_PUSH_BYTES(&val, sizeof(int64_t));
@@ -435,7 +678,8 @@ static int onda_compile_expr(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
     return 0;
   default:
     fprintf(stderr,
-            "Unexpected token in expression at line %lu, column %lu\n",
+            "Unexpected token '%.s' in expression at line %lu, column %lu\n",
+            tok.len > 0 ? tok.start : "<EOF>",
             lexer->line,
             lexer->column);
     return -1;
@@ -444,6 +688,7 @@ static int onda_compile_expr(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
 }
 
 int onda_compile(onda_lexer_t* lexer, onda_code_obj_t* code_obj) {
+  code_obj->entry_pc = 0;
   while (true) {
     if (at_end(lexer))
       break;
@@ -452,4 +697,26 @@ int onda_compile(onda_lexer_t* lexer, onda_code_obj_t* code_obj) {
       return rc;
   }
   return 0;
+}
+
+int onda_code_obj_init(onda_code_obj_t* cobj, size_t initial_capacity) {
+  cobj->code = (uint8_t*)onda_malloc(initial_capacity);
+  if (!cobj->code)
+    return -1;
+  cobj->size = 0;
+  cobj->capacity = initial_capacity;
+  cobj->entry_pc = 0;
+  onda_dict_init(&cobj->words_map);
+  cobj->words = NULL;
+  cobj->words_count = 0;
+  return 0;
+}
+
+void onda_code_obj_free(onda_code_obj_t* cobj) {
+  if (cobj->code)
+    onda_free(cobj->code);
+  onda_dict_free(&cobj->words_map);
+  if (cobj->words)
+    free(cobj->words);
+  memset(cobj, 0, sizeof(onda_code_obj_t));
 }

@@ -27,7 +27,7 @@ int onda_vm_load_code(onda_vm_t* vm,
   return 0;
 }
 
-static char* opcode_to_str[] = {
+static const char* opcode_to_str[ONDA_OP_COUNT] = {
     [ONDA_OP_RET] = "RET",
     [ONDA_OP_ADD] = "ADD",
     [ONDA_OP_SUB] = "SUB",
@@ -48,6 +48,10 @@ static char* opcode_to_str[] = {
     [ONDA_OP_PUSH_CONST_U8] = "PUSH_CONST_U8",
     [ONDA_OP_PUSH_CONST_U32] = "PUSH_CONST_U32",
     [ONDA_OP_PUSH_CONST_U64] = "PUSH_CONST_U64",
+    [ONDA_OP_PUSH_LOCAL] = "PUSH_FROM_LOCAL",
+    [ONDA_OP_STORE_LOCAL] = "STORE_TO_LOCAL",
+    [ONDA_OP_PUSH_FROM_ADDR] = "PUSH_FROM_ADDR",
+    [ONDA_OP_STORE_TO_ADDR] = "STORE_TO_ADDR",
     [ONDA_OP_SWAP] = "SWAP",
     [ONDA_OP_DUP] = "DUP",
     [ONDA_OP_OVER] = "OVER",
@@ -55,40 +59,20 @@ static char* opcode_to_str[] = {
     [ONDA_OP_DROP] = "DROP",
     [ONDA_OP_JUMP] = "JUMP",
     [ONDA_OP_JUMP_IF_FALSE] = "JUMP_IF_FALSE",
+    [ONDA_OP_CALL] = "CALL",
     [ONDA_OP_PRINT] = "PRINT",
     [ONDA_OP_PRINT_STR] = "PRINT_STR",
 };
 
-static uint8_t opcode_args_byte[] = {
-    [ONDA_OP_RET] = 0,
-    [ONDA_OP_ADD] = 0,
-    [ONDA_OP_SUB] = 0,
-    [ONDA_OP_MUL] = 0,
-    [ONDA_OP_DIV] = 0,
-    [ONDA_OP_MOD] = 0,
-    [ONDA_OP_INC] = 0,
-    [ONDA_OP_DEC] = 0,
-    [ONDA_OP_AND] = 0,
-    [ONDA_OP_OR] = 0,
-    [ONDA_OP_NOT] = 0,
-    [ONDA_OP_EQ] = 0,
-    [ONDA_OP_NEQ] = 0,
-    [ONDA_OP_LT] = 0,
-    [ONDA_OP_GT] = 0,
-    [ONDA_OP_LTE] = 0,
-    [ONDA_OP_GTE] = 0,
-    [ONDA_OP_PUSH_CONST_U8] = 1,
-    [ONDA_OP_PUSH_CONST_U32] = 4,
-    [ONDA_OP_PUSH_CONST_U64] = 8,
-    [ONDA_OP_SWAP] = 0,
-    [ONDA_OP_DUP] = 0,
-    [ONDA_OP_OVER] = 0,
-    [ONDA_OP_ROT] = 0,
-    [ONDA_OP_DROP] = 0,
-    [ONDA_OP_JUMP] = 2,
-    [ONDA_OP_JUMP_IF_FALSE] = 2,
-    [ONDA_OP_PRINT] = 0,
-    [ONDA_OP_PRINT_STR] = 0,
+static const uint8_t opcode_args_byte[ONDA_OP_COUNT] = {
+    [ONDA_OP_PUSH_CONST_U8] = sizeof(uint8_t),
+    [ONDA_OP_PUSH_CONST_U32] = sizeof(uint32_t),
+    [ONDA_OP_PUSH_CONST_U64] = sizeof(uint64_t),
+    [ONDA_OP_PUSH_LOCAL] = sizeof(uint8_t),
+    [ONDA_OP_STORE_LOCAL] = sizeof(uint8_t),
+    [ONDA_OP_JUMP] = sizeof(int16_t),
+    [ONDA_OP_JUMP_IF_FALSE] = sizeof(int16_t),
+    [ONDA_OP_CALL] = sizeof(int32_t) + 2,
 };
 
 void onda_vm_print_bytecode(const uint8_t* code, size_t code_size) {
@@ -104,11 +88,36 @@ void onda_vm_print_bytecode(const uint8_t* code, size_t code_size) {
   }
 }
 
+void debug_step(onda_vm_t* vm) {
+  uint8_t opcode = vm->code[vm->pc];
+  printf("PC: %04zu, SP: %zu, Opcode: %s\n",
+         vm->pc,
+         vm->sp,
+         opcode_to_str[opcode]);
+  while (1) {
+    int c = getchar();
+    switch (c) {
+    case 'c':
+      return; // continue execution
+    case 'q':
+      exit(0); // quit
+    case 's':
+      printf("\n");
+      printf("Stack:\n");
+      for (size_t i = 0; i < vm->sp; i++) {
+        printf("  [%zu]: %llu\n", i, vm->data_stack[i]);
+      }
+      break;
+    }
+  }
+}
+
 int onda_vm_run(onda_vm_t* vm) {
   vm->pc = vm->entry_pc;
+  vm->frame_bp = vm->frame_stack + ONDA_VM_FRAME_STACK_SIZE;
   vm->sp = 0;
 
-  static void* dispatch_table[] = {
+  static const void* dispatch_table[] = {
       [ONDA_OP_RET] = &&op_ret,
       [ONDA_OP_ADD] = &&op_add,
       [ONDA_OP_SUB] = &&op_sub,
@@ -129,6 +138,10 @@ int onda_vm_run(onda_vm_t* vm) {
       [ONDA_OP_PUSH_CONST_U8] = &&op_push_const_u8,
       [ONDA_OP_PUSH_CONST_U32] = &&op_push_const_u32,
       [ONDA_OP_PUSH_CONST_U64] = &&op_push_const_u64,
+      [ONDA_OP_PUSH_LOCAL] = &&op_push_from_local,
+      [ONDA_OP_STORE_LOCAL] = &&op_store_to_local,
+      [ONDA_OP_PUSH_FROM_ADDR] = &&op_push_from_addr,
+      [ONDA_OP_STORE_TO_ADDR] = &&op_store_to_addr,
       [ONDA_OP_SWAP] = &&op_swap,
       [ONDA_OP_DUP] = &&op_dup,
       [ONDA_OP_OVER] = &&op_over,
@@ -136,11 +149,19 @@ int onda_vm_run(onda_vm_t* vm) {
       [ONDA_OP_DROP] = &&op_drop,
       [ONDA_OP_JUMP] = &&op_jmp,
       [ONDA_OP_JUMP_IF_FALSE] = &&op_jmp_if_false,
+      [ONDA_OP_CALL] = &&op_call,
       [ONDA_OP_PRINT] = &&op_print,
       [ONDA_OP_PRINT_STR] = &&op_print_str,
   };
 
+#ifdef ONDA_VM_DEBUG_MODE
+#define DISPATCH()                                                             \
+  if (vm->debug_mode)                                                          \
+    debug_step(vm);                                                            \
+  goto* dispatch_table[vm->code[vm->pc++]];
+#else
 #define DISPATCH() goto* dispatch_table[vm->code[vm->pc++]];
+#endif
 
   DISPATCH();
 
@@ -150,132 +171,173 @@ int onda_vm_run(onda_vm_t* vm) {
 // Arithmetic operations
 op_add:
   vm->sp--;
-  vm->stack[vm->sp - 1] += vm->stack[vm->sp];
+  vm->data_stack[vm->sp - 1] += vm->data_stack[vm->sp];
   DISPATCH();
 op_sub:
   vm->sp--;
-  vm->stack[vm->sp - 1] -= vm->stack[vm->sp];
+  vm->data_stack[vm->sp - 1] -= vm->data_stack[vm->sp];
   DISPATCH();
 op_mul:
   vm->sp--;
-  vm->stack[vm->sp - 1] *= vm->stack[vm->sp];
+  vm->data_stack[vm->sp - 1] *= vm->data_stack[vm->sp];
   DISPATCH();
 op_div:
   vm->sp--;
-  vm->stack[vm->sp - 1] /= vm->stack[vm->sp];
+  vm->data_stack[vm->sp - 1] /= vm->data_stack[vm->sp];
   DISPATCH();
 op_mod:
   vm->sp--;
-  vm->stack[vm->sp - 1] %= vm->stack[vm->sp];
+  vm->data_stack[vm->sp - 1] %= vm->data_stack[vm->sp];
   DISPATCH();
 op_inc:
-  vm->stack[vm->sp - 1]++;
+  vm->data_stack[vm->sp - 1]++;
   DISPATCH();
 op_dec:
-  vm->stack[vm->sp - 1]--;
+  vm->data_stack[vm->sp - 1]--;
   DISPATCH();
 
 // Logical operations
 op_and:
   vm->sp--;
-  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] && vm->stack[vm->sp];
+  vm->data_stack[vm->sp - 1] =
+      vm->data_stack[vm->sp - 1] && vm->data_stack[vm->sp];
   DISPATCH();
 op_or:
   vm->sp--;
-  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] || vm->stack[vm->sp];
+  vm->data_stack[vm->sp - 1] =
+      vm->data_stack[vm->sp - 1] || vm->data_stack[vm->sp];
   DISPATCH();
 op_not:
-  vm->stack[vm->sp - 1] = !vm->stack[vm->sp - 1];
+  vm->data_stack[vm->sp - 1] = !vm->data_stack[vm->sp - 1];
   DISPATCH();
 
 // Comparison operations
 op_eq:
   vm->sp--;
-  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] == vm->stack[vm->sp];
+  vm->data_stack[vm->sp - 1] =
+      vm->data_stack[vm->sp - 1] == vm->data_stack[vm->sp];
   DISPATCH();
 op_neq:
   vm->sp--;
-  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] != vm->stack[vm->sp];
+  vm->data_stack[vm->sp - 1] =
+      vm->data_stack[vm->sp - 1] != vm->data_stack[vm->sp];
   DISPATCH();
 op_lt:
   vm->sp--;
-  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] < vm->stack[vm->sp];
+  vm->data_stack[vm->sp - 1] =
+      vm->data_stack[vm->sp - 1] < vm->data_stack[vm->sp];
   DISPATCH();
 op_gt:
   vm->sp--;
-  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] > vm->stack[vm->sp];
+  vm->data_stack[vm->sp - 1] =
+      vm->data_stack[vm->sp - 1] > vm->data_stack[vm->sp];
   DISPATCH();
 op_lte:
   vm->sp--;
-  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] <= vm->stack[vm->sp];
+  vm->data_stack[vm->sp - 1] =
+      vm->data_stack[vm->sp - 1] <= vm->data_stack[vm->sp];
   DISPATCH();
 op_gte:
   vm->sp--;
-  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 1] >= vm->stack[vm->sp];
+  vm->data_stack[vm->sp - 1] =
+      vm->data_stack[vm->sp - 1] >= vm->data_stack[vm->sp];
   DISPATCH();
 
 // Stack operations
 op_push_const_u8:
-  vm->stack[vm->sp++] = (int8_t)vm->code[vm->pc++];
+  vm->data_stack[vm->sp++] = (int8_t)vm->code[vm->pc++];
   DISPATCH();
 op_push_const_u32:
   memcpy(&tmp, &vm->code[vm->pc], 4);
   vm->pc += 4;
-  vm->stack[vm->sp++] = (int32_t)tmp;
+  vm->data_stack[vm->sp++] = (int32_t)tmp;
   DISPATCH();
 op_push_const_u64:
   memcpy(&tmp, &vm->code[vm->pc], 8);
   vm->pc += 8;
-  vm->stack[vm->sp++] = (int64_t)tmp;
+  vm->data_stack[vm->sp++] = (int64_t)tmp;
   DISPATCH();
+op_push_from_local : {
+  uint8_t local_id = vm->code[vm->pc++];
+  vm->data_stack[vm->sp++] = vm->frame_bp[local_id];
+  DISPATCH();
+}
+op_store_to_local : {
+  uint8_t local_id = vm->code[vm->pc++];
+  vm->frame_bp[local_id] = vm->data_stack[--vm->sp];
+  DISPATCH();
+}
+op_push_from_addr:
+  vm->data_stack[vm->sp++] = *(uint64_t*)vm->data_stack[--vm->sp];
+  DISPATCH();
+op_store_to_addr : {
+  uint64_t addr = vm->data_stack[--vm->sp];
+  uint64_t value = vm->data_stack[--vm->sp];
+  *(uint64_t*)addr = value;
+  DISPATCH();
+}
 op_swap:
-  tmp = vm->stack[vm->sp - 1];
-  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 2];
-  vm->stack[vm->sp - 2] = tmp;
+  tmp = vm->data_stack[vm->sp - 1];
+  vm->data_stack[vm->sp - 1] = vm->data_stack[vm->sp - 2];
+  vm->data_stack[vm->sp - 2] = tmp;
   DISPATCH();
 op_dup:
-  vm->stack[vm->sp++] = vm->stack[vm->sp - 1];
+  vm->data_stack[vm->sp++] = vm->data_stack[vm->sp - 1];
   DISPATCH();
 op_over:
-  vm->stack[vm->sp++] = vm->stack[vm->sp - 2];
+  vm->data_stack[vm->sp++] = vm->data_stack[vm->sp - 2];
   DISPATCH();
 op_rot:
-  tmp = vm->stack[vm->sp - 1];
-  vm->stack[vm->sp - 1] = vm->stack[vm->sp - 2];
-  vm->stack[vm->sp - 2] = vm->stack[vm->sp - 3];
-  vm->stack[vm->sp - 3] = tmp;
+  tmp = vm->data_stack[vm->sp - 1];
+  vm->data_stack[vm->sp - 1] = vm->data_stack[vm->sp - 2];
+  vm->data_stack[vm->sp - 2] = vm->data_stack[vm->sp - 3];
+  vm->data_stack[vm->sp - 3] = tmp;
   DISPATCH();
 op_drop:
   vm->sp--;
   DISPATCH();
 op_jmp:
-  memcpy(&jmp_offset, &vm->code[vm->pc], 2);
+  memcpy(&jmp_offset, &vm->code[vm->pc], sizeof(int16_t));
   vm->pc += jmp_offset;
   DISPATCH();
 op_jmp_if_false:
-  memcpy(&jmp_offset, &vm->code[vm->pc], 2);
-  if (vm->stack[--vm->sp] == 0)
+  memcpy(&jmp_offset, &vm->code[vm->pc], sizeof(int16_t));
+  if (vm->data_stack[--vm->sp] == 0)
     vm->pc += jmp_offset;
   else
-    vm->pc += 2;
-  DISPATCH();
-op_dev_jmp_if_nz:
-  memcpy(&jmp_offset, &vm->code[vm->pc], 2);
-  vm->stack[vm->sp - 1]--;
-  if (vm->stack[vm->sp - 1] != 0)
-    vm->pc += jmp_offset;
-  else
-    vm->pc += 2;
+    vm->pc += sizeof(int16_t);
   DISPATCH();
 op_print:
-  onda_print_u64((uint64_t)vm->stack[--vm->sp]);
+  onda_print_u64((uint64_t)vm->data_stack[--vm->sp]);
   DISPATCH();
 op_print_str : {
-  onda_print_string((char*)vm->stack[--vm->sp]);
+  onda_print_string((char*)vm->data_stack[--vm->sp]);
+  DISPATCH();
+}
+op_call : {
+  int32_t branch_offset;
+  const uint8_t args = vm->code[vm->pc++];
+  const uint8_t locals = vm->code[vm->pc++];
+  memcpy(&branch_offset, &vm->code[vm->pc], sizeof(int32_t));
+  vm->pc += sizeof(int32_t);
+  const uint64_t* prev_bp = vm->frame_bp;
+  // reserve space for return address, previous bp and locals
+  vm->frame_bp -= (2 + locals);
+  vm->frame_bp[0] = vm->pc;            // return address
+  vm->frame_bp[1] = (uint64_t)prev_bp; // previous bp
+  // Copy arguments to new frame
+  for (uint8_t i = 0; i < args; i++)
+    vm->frame_bp[2 + i] = vm->data_stack[vm->sp - args + i];
+  vm->sp -= args; // pop arguments from caller frame
+  vm->pc += branch_offset;
   DISPATCH();
 }
 op_ret:
-  return 0;
+  if (vm->frame_bp == vm->frame_stack + ONDA_VM_FRAME_STACK_SIZE)
+    return 0;                                // HALT
+  vm->pc = vm->frame_bp[0];                  // return address
+  vm->frame_bp = (uint64_t*)vm->frame_bp[1]; // restore previous bp
+  DISPATCH();
 }
 
 void onda_vm_free(onda_vm_t* vm) {

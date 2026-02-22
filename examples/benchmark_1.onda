@@ -1,8 +1,9 @@
-1
-100000000
-while dup do
-  swap 3 * 1 + swap
-  --
-endwhile
-drop
-ret
+: main
+  1
+  100000000
+  while dup do
+    swap 3 * 1 + swap
+    --
+  endwhile
+  drop
+;

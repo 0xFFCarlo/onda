@@ -1,7 +1,3 @@
-- jmp and jmp_if instructions should support labels as
-  targets.
-- test jmp, jmp_if, labels in vm
-- test jmp, jmp_if, labels in aarch64 compiler
 - store constants/data (eg strings) in a data section (no
   random allocations) so that bytecode can be saved to file
   with constants too.

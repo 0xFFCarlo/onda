@@ -1,1 +1,1 @@
-"Hello World!\n" prints ret
+: main "Hello World!\n" prints ;

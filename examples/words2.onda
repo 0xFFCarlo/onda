@@ -1,0 +1,2 @@
+:square dup * ;
+:main 5 square print ;
