@@ -200,11 +200,11 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
     } break;
     case ONDA_OP_PUSH_LOCAL: {
       const uint8_t local_id = bytecode[bcode_pos++];
-      EMIT2(AA64_PUSH_X0_STACK, AA64_LDRU(0, 21, local_id * 8 + 16));
+      EMIT2(AA64_PUSH_X0_STACK, AA64_LDRU(0, 21, local_id * 8));
     } break;
     case ONDA_OP_STORE_LOCAL: {
       const uint8_t local_id = bytecode[bcode_pos++];
-      EMIT2(AA64_STRU(0, 21, local_id * 8 + 16), AA64_POP_STACK(0));
+      EMIT2(AA64_STRU(0, 21, local_id * 8), AA64_POP_STACK(0));
     } break;
     case ONDA_OP_PUSH_FROM_ADDR:
       // TODO:
@@ -330,11 +330,13 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       int32_t branch_offset;
       memcpy(&branch_offset, &bytecode[bcode_pos], 4);
       bcode_pos += sizeof(int32_t);
-      // x6 store x21 (frame_bp)
-      // x21 make room for 2 + locals elements
-      // x21[1] store x6 (prev frame_bp)
-      // x21[0] store return address in bytes
-      // branch to function
+      // - x6 store x21 (frame_bp)
+      // - x21 make room for 2 + locals elements
+      // - load arguments from data stack and store to frame stack
+      // - pop arguments from data stack
+      // - x21[1] store x6 (prev frame_bp)
+      // - x21[0] store return address in bytes
+      // - branch to function
       EMIT(AA64_MOV(6, 21));
       const uint32_t frame_bytes = (uint32_t)(2u + locals) * 8u;
       if (frame_bytes <= 4095) {
@@ -343,10 +345,32 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
         printf("Error: frame too large for SUBI immediate\n");
         return -1;
       }
-      EMIT(AA64_STRU(6, 21, 8));
+
+      // Move arguments from data stack to frame stack
+      for (int i = 0; i < argc; i++) {
+        if (i == 0) { // TOS is in x0 already
+          EMIT(AA64_STRU(0, 21, (2 + argc - 1 - i) * 8));
+        } else {
+          // load argument from data stack
+          EMIT(AA64_LDRU(7, 31, (i - 1) * 16));
+          // store argument to frame stack
+          EMIT(AA64_STRU(7, 21, (2 + argc - 1 - i) * 8));
+        }
+      }
+      // Pop arguments from data stack
+      if (argc > 0) {
+        // New TOS is the value below the removed args
+        const uint32_t new_tos_off = (uint32_t)(argc - 1u) * 16u;
+        const uint32_t pop_bytes = (uint32_t)argc * 16u;
+
+        EMIT(AA64_LDRU(0, 31, new_tos_off)); // x0 = new caller TOS
+        EMIT(AA64_ADDI(31, 31, pop_bytes));  // sp += argc * 16
+      }
+
+      EMIT(AA64_STRU(6, 21, 1 * 8));
       // address of next instruction after branch, in bytes
       EMIT(AA64_ADR(6, 3 * 4));
-      EMIT(AA64_STRU(6, 21, 0));
+      EMIT(AA64_STRU(6, 21, 0 * 8));
       if (bcode_to_mcode[bcode_pos + branch_offset] == -1) {
         printf("Error: Unresolved jump for CALL at bytecode position %d\n",
                bcode_pos);
