@@ -207,10 +207,13 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       EMIT2(AA64_STRU(0, 21, local_id * 8), AA64_POP_STACK(0));
     } break;
     case ONDA_OP_PUSH_FROM_ADDR:
-      // TODO:
+      EMIT(AA64_LDRU(0, 0, 0)); // x0 = *(uint64_t*)x0
       break;
     case ONDA_OP_STORE_TO_ADDR:
-      // TODO:
+      EMIT(AA64_LDRU(7, 31, 0));   // x7 = value from [sp]
+      EMIT(AA64_STRU(7, 0, 0));    // *(uint64_t*)x0 = x7
+      EMIT(AA64_LDRU(0, 31, 16));  // x0 = next item below value
+      EMIT(AA64_ADDI(31, 31, 32)); // sp += 32
       break;
     case ONDA_OP_ADD:
       EMIT2(AA64_POP_STACK(1), AA64_ADD(0, 1, 0));

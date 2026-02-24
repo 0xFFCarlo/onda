@@ -130,6 +130,13 @@ static const test_case_t tests[] = {
      ":main   fun_a ; ",
      1,
      6},
+    // Words with arguments
+    {": dist ( a b ) a a * b b * + ;"
+     ": main 3 4 dist ;",
+     1, 25},
+    {": const ( a ) 10 -> a a ;"
+     ": main 0 const ;",
+     1, 10},
 };
 
 int main() {

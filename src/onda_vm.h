@@ -7,7 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// #define ONDA_VM_DEBUG_MODE
+//#define ONDA_VM_DEBUG_MODE
 #define ONDA_VM_STACK_SIZE       1024
 #define ONDA_VM_FRAME_STACK_SIZE 1024
 
