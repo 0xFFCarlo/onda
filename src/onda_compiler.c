@@ -332,7 +332,7 @@ static int onda_compile_if(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   size_t condition_jmp_pc = cobj->size;
   CODE_PUSH_BYTES(&(int16_t){0},
                   sizeof(int16_t)); // placeholder for jump offset
-  rc = onda_compile_until_ident(lexer, cobj, "else", 4, "endif", 5);
+  rc = onda_compile_until_ident(lexer, cobj, "else", 4, "end", 5);
   if (rc < 0)
     return rc;
 
@@ -352,7 +352,7 @@ static int onda_compile_if(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
 
   // If we ended on "else", we need to compile the else block too
   if (rc == 0) {
-    rc = onda_compile_until_ident(lexer, cobj, "endif", 5, NULL, 0);
+    rc = onda_compile_until_ident(lexer, cobj, "end", 5, NULL, 0);
     if (rc < 0)
       return rc;
 
@@ -376,7 +376,7 @@ static int onda_compile_while(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   CODE_PUSH_BYTES(&(int16_t){0},
                   sizeof(int16_t)); // placeholder for jump offset
 
-  rc = onda_compile_until_ident(lexer, cobj, "endwhile", 8, NULL, 0);
+  rc = onda_compile_until_ident(lexer, cobj, "end", 8, NULL, 0);
   if (rc < 0)
     return rc;
 

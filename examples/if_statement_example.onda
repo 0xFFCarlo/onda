@@ -1,9 +1,9 @@
 : main
-  if 10 15 > then 
+  if 10 15 > then
     "Temperature is cold\n" prints
     ret
   else
   "Temperature is warm\n" prints
    ret
-  endif
+  end
 ;

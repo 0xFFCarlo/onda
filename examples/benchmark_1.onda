@@ -4,6 +4,6 @@
   while dup do
     swap 3 * 1 + swap
     --
-  endwhile
+  end
   drop
 ;
