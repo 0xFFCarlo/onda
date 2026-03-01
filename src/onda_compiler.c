@@ -175,6 +175,8 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
     return tok1(lexer, t, TOKEN_LPAREN);
   case ')':
     return tok1(lexer, t, TOKEN_RPAREN);
+  case '|':
+    return tok1(lexer, t, TOkeN_SEPARATOR);
   case '"': {
     int rc = lex_string(lexer, &t->start, &t->len);
     if (rc) {
@@ -332,7 +334,7 @@ static int onda_compile_if(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   size_t condition_jmp_pc = cobj->size;
   CODE_PUSH_BYTES(&(int16_t){0},
                   sizeof(int16_t)); // placeholder for jump offset
-  rc = onda_compile_until_ident(lexer, cobj, "else", 4, "end", 5);
+  rc = onda_compile_until_ident(lexer, cobj, "else", 4, "end", 3);
   if (rc < 0)
     return rc;
 
@@ -352,7 +354,7 @@ static int onda_compile_if(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
 
   // If we ended on "else", we need to compile the else block too
   if (rc == 0) {
-    rc = onda_compile_until_ident(lexer, cobj, "end", 5, NULL, 0);
+    rc = onda_compile_until_ident(lexer, cobj, "end", 3, NULL, 0);
     if (rc < 0)
       return rc;
 
@@ -376,7 +378,7 @@ static int onda_compile_while(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   CODE_PUSH_BYTES(&(int16_t){0},
                   sizeof(int16_t)); // placeholder for jump offset
 
-  rc = onda_compile_until_ident(lexer, cobj, "end", 8, NULL, 0);
+  rc = onda_compile_until_ident(lexer, cobj, "end", 3, NULL, 0);
   if (rc < 0)
     return rc;
 
@@ -438,7 +440,7 @@ static const onda_imm_word_t imm_words[] = {
     {"%", ONDA_OP_MOD},
     {"++", ONDA_OP_INC},
     {"--", ONDA_OP_DEC},
-    {"!", ONDA_OP_NOT},
+    {"not", ONDA_OP_NOT},
     {"==", ONDA_OP_EQ},
     {"!=", ONDA_OP_NEQ},
     {"<", ONDA_OP_LT},
@@ -452,14 +454,22 @@ static const onda_imm_word_t imm_words[] = {
     {"over", ONDA_OP_OVER},
     {"rot", ONDA_OP_ROT},
     {"swap", ONDA_OP_SWAP},
-    {"print", ONDA_OP_PRINT},
-    {"prints", ONDA_OP_PRINT_STR},
     {"ret", ONDA_OP_RET},
-    {"@", ONDA_OP_PUSH_FROM_ADDR},
-    {"!", ONDA_OP_STORE_TO_ADDR},
+    {"b@", ONDA_OP_PUSH_FROM_ADDR_B},
+    {"b!", ONDA_OP_STORE_TO_ADDR_B},
+    {"h@", ONDA_OP_PUSH_FROM_ADDR_HW},
+    {"h!", ONDA_OP_STORE_TO_ADDR_HW},
+    {"w@", ONDA_OP_PUSH_FROM_ADDR_W},
+    {"w!", ONDA_OP_STORE_TO_ADDR_W},
+    {"@", ONDA_OP_PUSH_FROM_ADDR_DW},
+    {"!", ONDA_OP_STORE_TO_ADDR_DW},
     {"->", .handler = onda_compile_store_local},
     {"if", .handler = onda_compile_if},
     {"while", .handler = onda_compile_while},
+    {"print", ONDA_OP_PRINT},
+    {"prints", ONDA_OP_PRINT_STR},
+    {"malloc", ONDA_OP_MALLOC},
+    {"free", ONDA_OP_FREE},
 };
 static const size_t num_imm_words = sizeof(imm_words) / sizeof(imm_words[0]);
 
@@ -528,6 +538,7 @@ static int onda_compile_word(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   onda_scope_push(cobj);
 
   // Parse arguments if any
+  bool is_argument_section = true;
   onda_token_peek(lexer, &tok);
   if (tok.type == TOKEN_LPAREN) {
     onda_token_next(lexer, &tok); // consume '('
@@ -536,6 +547,11 @@ static int onda_compile_word(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
       if (tok.type == TOKEN_RPAREN) {
         onda_token_next(lexer, &tok); // consume ')'
         break;
+      }
+      if (tok.type == TOkeN_SEPARATOR) {
+        onda_token_next(lexer, &tok); // consume '|'
+        is_argument_section = false;
+        continue;
       }
       if (tok.type != TOKEN_IDENTIFIER) {
         fprintf(
@@ -561,7 +577,8 @@ static int onda_compile_word(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
                 lexer->column);
         return -1;
       }
-      word.args_count++;
+      if (is_argument_section)
+        word.args_count++;
     } while (true);
   }
 

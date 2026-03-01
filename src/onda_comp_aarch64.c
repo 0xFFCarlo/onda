@@ -206,15 +206,16 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       const uint8_t local_id = bytecode[bcode_pos++];
       EMIT2(AA64_STRU(0, 21, local_id * 8), AA64_POP_STACK(0));
     } break;
-    case ONDA_OP_PUSH_FROM_ADDR:
+    case ONDA_OP_PUSH_FROM_ADDR_DW:
       EMIT(AA64_LDRU(0, 0, 0)); // x0 = *(uint64_t*)x0
       break;
-    case ONDA_OP_STORE_TO_ADDR:
+    case ONDA_OP_STORE_TO_ADDR_DW:
       EMIT(AA64_LDRU(7, 31, 0));   // x7 = value from [sp]
       EMIT(AA64_STRU(7, 0, 0));    // *(uint64_t*)x0 = x7
       EMIT(AA64_LDRU(0, 31, 16));  // x0 = next item below value
       EMIT(AA64_ADDI(31, 31, 32)); // sp += 32
       break;
+    // TODO: implement byte and halfword memory access opcodes
     case ONDA_OP_ADD:
       EMIT2(AA64_POP_STACK(1), AA64_ADD(0, 1, 0));
       break;
@@ -321,6 +322,22 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
     } break;
     case ONDA_OP_PRINT_STR: {
       const uint64_t addr = (uint64_t)(uintptr_t)&onda_print_string;
+      EMIT(AA64_MOVZ(16, (addr >> 0) & 0xFFFF, 0));
+      EMIT(AA64_MOVK(16, (addr >> 16) & 0xFFFF, 16));
+      EMIT(AA64_MOVK(16, (addr >> 32) & 0xFFFF, 32));
+      EMIT(AA64_MOVK(16, (addr >> 48) & 0xFFFF, 48));
+      EMIT2(AA64_BLR_X16, AA64_POP_STACK(0));
+    } break;
+    case ONDA_OP_MALLOC: {
+      const uint64_t addr = (uint64_t)(uintptr_t)&onda_malloc;
+      EMIT(AA64_MOVZ(16, (addr >> 0) & 0xFFFF, 0));
+      EMIT(AA64_MOVK(16, (addr >> 16) & 0xFFFF, 16));
+      EMIT(AA64_MOVK(16, (addr >> 32) & 0xFFFF, 32));
+      EMIT(AA64_MOVK(16, (addr >> 48) & 0xFFFF, 48));
+      EMIT(AA64_BLR_X16);
+    } break;
+    case ONDA_OP_FREE: {
+      const uint64_t addr = (uint64_t)(uintptr_t)&onda_free;
       EMIT(AA64_MOVZ(16, (addr >> 0) & 0xFFFF, 0));
       EMIT(AA64_MOVK(16, (addr >> 16) & 0xFFFF, 16));
       EMIT(AA64_MOVK(16, (addr >> 32) & 0xFFFF, 32));

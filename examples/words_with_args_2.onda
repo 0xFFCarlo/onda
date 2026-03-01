@@ -1,2 +1,6 @@
-: const ( a ) 10 -> a a ;
-: main 0 const print ;
+: dist2 ( a b | aa bb )
+  a a * -> aa
+  b b * -> bb
+  aa bb + ;
+
+: main 3 4 dist2 print ;

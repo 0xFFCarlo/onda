@@ -1,0 +1,1 @@
+: main 16 malloc dup 12 swap ! dup @ print free ;

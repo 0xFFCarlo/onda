@@ -52,8 +52,8 @@ static const test_case_t tests[] = {
     {"7 2 % ret", 1, 1},
 
     // --- NOT (!): assume logical-not (0 -> 1, nonzero -> 0)
-    {"0 ! ret", 1, 1},
-    {"5 ! ret", 1, 0},
+    {"0 not ret", 1, 1},
+    {"5 not ret", 1, 0},
 
     // --- EQUALITY (==)
     {"42 42 == ret", 1, 1},
@@ -104,23 +104,27 @@ static const test_case_t tests[] = {
     {"1 2 3 rot ret", 3, 2, 1},
 
     // If condition
-    {"if 1 then 2 endif ret", 1, 2},
-    {"if 0 then 2 endif ret", 0, 0},
-    {"if 2 3 > then 4 4 + else 5 5 + endif ret", 1, 10},
-    {"if 2 3 < then 4 4 + else 5 5 + endif ret", 1, 8},
-    {"if 1 then 3 else 4 endif ret", 1, 3},
-    {"if 0 then 3 else 4 endif ret", 1, 4},
+    {"if 1 then 2 end ret", 1, 2},
+    {"if 0 then 2 end ret", 0, 0},
+    {"if 2 3 > then 4 4 + else 5 5 + end ret", 1, 10},
+    {"if 2 3 < then 4 4 + else 5 5 + end ret", 1, 8},
+    {"if 1 then 3 else 4 end ret", 1, 3},
+    {"if 0 then 3 else 4 end ret", 1, 4},
 
     // While loop
-    {"10 while dup 2 > do -- endwhile ret", 1, 2},
-    {"5 while dup 0 > do 1 - endwhile drop ret", 0, 0},
+    {"10 while dup 2 > do -- end ret", 1, 2},
+    {"5 while dup 0 > do 1 - end drop ret", 0, 0},
+
+    // Memory operations
+    {"16 malloc dup 10 swap ! @ ret", 1, 10},
+    {"16 malloc dup 10 swap ! dup 8 + 20 swap ! dup 8 + @ swap @ ret", 2, 10, 20},
 
     // Words
     {":square  dup * ; "
      ":main    5 square ; ",
      1,
      25},
-    {":factorial  if dup 1 <= then drop 1 else dup 1 - factorial * endif ; "
+    {":factorial  if dup 1 <= then drop 1 else dup 1 - factorial * end ; "
      ":main       5 factorial ; ",
      1,
      120},
