@@ -117,7 +117,10 @@ static const test_case_t tests[] = {
 
     // Memory operations
     {"16 malloc dup 10 swap ! @ ret", 1, 10},
-    {"16 malloc dup 10 swap ! dup 8 + 20 swap ! dup 8 + @ swap @ ret", 2, 10, 20},
+    {"16 malloc dup 10 swap ! dup 8 + 20 swap ! dup 8 + @ swap @ ret",
+     2,
+     10,
+     20},
 
     // Words
     {":square  dup * ; "
@@ -137,10 +140,12 @@ static const test_case_t tests[] = {
     // Words with arguments
     {": dist ( a b ) a a * b b * + ;"
      ": main 3 4 dist ;",
-     1, 25},
+     1,
+     25},
     {": const ( a ) 10 -> a a ;"
      ": main 0 const ;",
-     1, 10},
+     1,
+     10},
 };
 
 int main() {
@@ -208,6 +213,7 @@ int main() {
 
   onda_vm_free(vm);
 
+#if defined(__aarch64__)
   // Run tests using JIT only (without VM execution)
   printf("\nTesting with JIT:\n");
   for (i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
@@ -253,6 +259,7 @@ int main() {
     onda_code_obj_free(&cobj);
     printf("Test %zu passed.\n", i);
   }
+#endif // defined(__aarch64__)
 
   return 0;
 failed:
