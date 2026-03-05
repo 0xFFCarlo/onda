@@ -368,7 +368,9 @@ static int onda_compile_if(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
 }
 
 static int onda_compile_while(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
+  const int32_t prev_loop_start_pc = cobj->inner_loop_start_pc;
   size_t loop_start_pc = cobj->size;
+  cobj->inner_loop_start_pc = (int32_t)loop_start_pc;
   int rc = onda_compile_until_ident(lexer, cobj, "do", 2, NULL, 0);
   if (rc < 0)
     return rc;
@@ -393,7 +395,37 @@ static int onda_compile_while(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   int16_t condition_jmp_offset = (int16_t)(after_loop_pc - condition_jmp_pc);
   memcpy(&cobj->code[condition_jmp_pc], &condition_jmp_offset, sizeof(int16_t));
 
+  // Restore previous loop start for nested loops
+  cobj->inner_loop_start_pc = prev_loop_start_pc;
+
   return 0;
+}
+
+static char* read_file(const char* filepath, size_t* out_size) {
+  FILE* f = fopen(filepath, "rb");
+  if (!f)
+    return NULL;
+  fseek(f, 0, SEEK_END);
+  long file_size = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  if (file_size < 0) {
+    fclose(f);
+    return NULL;
+  }
+  char* buffer = (char*)onda_malloc((size_t)file_size + 1);
+  if (!buffer) {
+    fclose(f);
+    return NULL;
+  }
+  size_t read_size = fread(buffer, 1, (size_t)file_size, f);
+  fclose(f);
+  if (read_size != (size_t)file_size) {
+    onda_free(buffer);
+    return NULL;
+  }
+  buffer[read_size] = '\0'; // null-terminate for lexer
+  *out_size = read_size;
+  return buffer;
 }
 
 static int onda_compile_store_local(onda_lexer_t* lexer,
@@ -420,6 +452,52 @@ static int onda_compile_store_local(onda_lexer_t* lexer,
   }
   CODE_PUSH_BYTE(ONDA_OP_STORE_LOCAL);
   CODE_PUSH_BYTE(local_id + ONDA_LOCALS_BASE_OFF);
+  return 0;
+}
+
+static int onda_compile_import(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
+  onda_token_t tok;
+  char path[128];
+  onda_token_next(lexer, &tok);
+  if (tok.type != TOKEN_STRING) {
+    fprintf(stderr,
+            "Expected string literal after 'import' at line %lu, column %lu\n",
+            lexer->line,
+            lexer->column);
+    return -1;
+  }
+
+  if (tok.len >= sizeof(path)) {
+    fprintf(
+        stderr,
+        "Import path too long at line %lu, column %lu (max %zu characters)\n",
+        lexer->line,
+        lexer->column,
+        sizeof(path) - 1);
+    return -1;
+  }
+
+  memcpy(path, tok.start, (size_t)tok.len);
+  path[tok.len] = '\0';
+
+  return onda_compile_file(path, lexer, cobj);
+}
+
+static int onda_compile_continue(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
+  if (cobj->inner_loop_start_pc == -1) {
+    fprintf(stderr,
+            "Error: 'continue' used outside of a loop at line %lu, column "
+            "%lu\n",
+            lexer->line,
+            lexer->column);
+    return -1;
+  }
+  // Emit jump back to loop start
+  CODE_PUSH_BYTE(ONDA_OP_JUMP);
+  size_t loop_end_jmp_pc = cobj->size;
+  const int16_t loop_back_offset =
+      (int16_t)(cobj->inner_loop_start_pc - loop_end_jmp_pc);
+  CODE_PUSH_BYTES(&loop_back_offset, sizeof(int16_t));
   return 0;
 }
 
@@ -466,6 +544,8 @@ static const onda_imm_word_t imm_words[] = {
     {"->", .handler = onda_compile_store_local},
     {"if", .handler = onda_compile_if},
     {"while", .handler = onda_compile_while},
+    {"continue", .handler = onda_compile_continue},
+    {"import", .handler = onda_compile_import},
     {"print", ONDA_OP_PRINT},
     {"prints", ONDA_OP_PRINT_STR},
     {"malloc", ONDA_OP_MALLOC},
@@ -705,7 +785,6 @@ static int onda_compile_expr(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
 }
 
 int onda_compile(onda_lexer_t* lexer, onda_code_obj_t* code_obj) {
-  code_obj->entry_pc = 0;
   while (true) {
     if (at_end(lexer))
       break;
@@ -713,6 +792,82 @@ int onda_compile(onda_lexer_t* lexer, onda_code_obj_t* code_obj) {
     if (rc != 0)
       return rc;
   }
+  return 0;
+}
+
+int onda_compile_file(const char* filepath,
+                      onda_lexer_t* lexer,
+                      onda_code_obj_t* cobj) {
+  char filename[128];
+  char resolved_path[256];
+  // Extract filename
+  const char* last_slash = strrchr(filepath, '/');
+  if (last_slash)
+    strncpy(filename, last_slash + 1, sizeof(filename) - 1);
+  else
+    strncpy(filename, filepath, sizeof(filename) - 1);
+  filename[sizeof(filename) - 1] = '\0';
+
+  // Backup previous lexer state to restore after import
+  const char* prev_filepath = lexer->filepath;
+  const char* prev_filename = lexer->filename;
+  const char* prev_src = lexer->src;
+  size_t prev_column, prev_line, prev_pos;
+  prev_column = lexer->column;
+  prev_line = lexer->line;
+  prev_pos = lexer->pos;
+
+  // Extract current file base path for resolving relative imports
+  resolved_path[0] = '\0';
+  if (lexer->filepath) {
+    const char* last_slash_for_base = strrchr(lexer->filepath, '/');
+    if (last_slash_for_base) {
+      const size_t basepath_len = last_slash_for_base - lexer->filepath + 1;
+      memcpy(resolved_path, lexer->filepath, basepath_len);
+      resolved_path[basepath_len] = '\0';
+    }
+  }
+
+  // Append import path to base path
+  if (strlen(resolved_path) + strlen(filepath) >= sizeof(resolved_path)) {
+    fprintf(stderr,
+            "Resolved import path too long for file: %s (max %zu characters)\n",
+            filepath,
+            sizeof(resolved_path) - 1);
+    return -1;
+  }
+  strcat(resolved_path, filepath);
+
+  // Read imported file
+  size_t import_size;
+  char* import_src = read_file(resolved_path, &import_size);
+  if (!import_src || import_size == 0) {
+    fprintf(stderr, "Failed to read file: %s\n", resolved_path);
+    return -1;
+  }
+
+  // Set lexer state to imported file and compile
+  lexer->filepath = resolved_path;
+  lexer->filename = filename;
+  lexer->src = import_src;
+  lexer->pos = 0;
+  lexer->line = 0;
+  lexer->column = 0;
+  int rc = onda_compile(lexer, cobj);
+  if (rc != 0) {
+    fprintf(stderr, "Failed to compile file: %s\n", resolved_path);
+    return -1;
+  }
+  onda_free(import_src);
+
+  // Restore lexer state
+  lexer->filepath = prev_filepath;
+  lexer->filename = prev_filename;
+  lexer->src = prev_src;
+  lexer->column = prev_column;
+  lexer->line = prev_line;
+  lexer->pos = prev_pos;
+
   return 0;
 }
 
@@ -726,6 +881,7 @@ int onda_code_obj_init(onda_code_obj_t* cobj, size_t initial_capacity) {
   onda_dict_init(&cobj->words_map);
   cobj->words = NULL;
   cobj->words_count = 0;
+  cobj->inner_loop_start_pc = -1;
   return 0;
 }
 

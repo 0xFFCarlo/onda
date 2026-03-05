@@ -1,0 +1,3 @@
+import "fibonacci.onda"
+
+:main 10 fib print ;

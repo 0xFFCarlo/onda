@@ -18,6 +18,9 @@ typedef struct test_case_t {
 } test_case_t;
 
 static const test_case_t tests[] = {
+    //===================
+    // Basic operations
+    //===================
     // --- RET (empty stack)
     {"ret", 0, 0x0},
 
@@ -51,6 +54,9 @@ static const test_case_t tests[] = {
     // --- MODULO (%)
     {"7 2 % ret", 1, 1},
 
+    //===================
+    // Logic operators
+    //===================
     // --- NOT (!): assume logical-not (0 -> 1, nonzero -> 0)
     {"0 not ret", 1, 1},
     {"5 not ret", 1, 0},
@@ -87,7 +93,9 @@ static const test_case_t tests[] = {
     {"0 0 or ret", 1, 0},
     {"1 0 or ret", 1, 1},
 
-    // --- STACK OPS
+    //===================
+    // Stack operations
+    //===================
     // drop: (a -- )
     {"10 drop ret", 0, 0},
 
@@ -103,7 +111,9 @@ static const test_case_t tests[] = {
     // rot: (a b c -- b c a)
     {"1 2 3 rot ret", 3, 2, 1},
 
+    //===================
     // If condition
+    //===================
     {"if 1 then 2 end ret", 1, 2},
     {"if 0 then 2 end ret", 0, 0},
     {"if 2 3 > then 4 4 + else 5 5 + end ret", 1, 10},
@@ -111,26 +121,36 @@ static const test_case_t tests[] = {
     {"if 1 then 3 else 4 end ret", 1, 3},
     {"if 0 then 3 else 4 end ret", 1, 4},
 
+    //===================
     // While loop
+    //===================
     {"10 while dup 2 > do -- end ret", 1, 2},
     {"5 while dup 0 > do 1 - end drop ret", 0, 0},
+    {"0 while dup 10 < do ++ if dup 9 != then continue end 10 * end ret",
+     1,
+     90},
+    // Single loop: sum 1..10 but skip 5 using continue
+    {"0 10 while dup 0 > do "
+     "if dup 5 == then -- continue end "
+     "swap over + swap "
+     "-- "
+     "end drop ret",
+     1,
+     50},
 
-    // Memory operations
-    {"16 malloc dup 10 swap ! @ ret", 1, 10},
-    {"16 malloc dup 10 swap ! dup 8 + 20 swap ! dup 8 + @ swap @ ret",
-     2,
-     10,
-     20},
-
+    //===================
     // Words
+    //===================
     {":square  dup * ; "
      ":main    5 square ; ",
      1,
      25},
+    // Words recursion
     {":factorial  if dup 1 <= then drop 1 else dup 1 - factorial * end ; "
      ":main       5 factorial ; ",
      1,
      120},
+    // Many words
     {":fun_c  3 ; "
      ":fun_b  2 fun_c + ; "
      ":fun_a  1 fun_b + ; "
@@ -142,10 +162,69 @@ static const test_case_t tests[] = {
      ": main 3 4 dist ;",
      1,
      25},
-    {": const ( a ) 10 -> a a ;"
-     ": main 0 const ;",
+    // Words with local temporaries and local assignment/access
+    {": dist2 ( a b | aa bb ) "
+     "a a * -> aa "
+     "b b * -> bb "
+     "aa bb + ; "
+     ": main 3 4 dist2 ;",
      1,
+     25},
+    // Word with local temporaries and nested loop with continue statements
+    {
+        ": countdown ( n k | start_k i ) "
+        "  0 -> i "
+        "  k -> start_k "
+        "  while n 0 > do "
+        "    if n 3 == then n -- -> n continue end "
+        "    start_k -> k "
+        "    while k 0 > do "
+        "      if k 2 == then k -- -> k continue end "
+        "      i n + -> i "
+        "      k -- -> k "
+        "    end"
+        "    n -- -> n "
+        "  end i ; "
+        ": main 5 5 countdown ;",
+        1,
+        48, // 5 * 4 + 4 * 4 + 2 * 4 + 1 * 4 = 48
+    },
+    //===================
+    // Memory operations
+    //===================
+    {"16 malloc dup 10 swap ! @ ret", 1, 10},
+    // Setting and getting multiple 64bit double-word values in memory
+    {": test ( ptr ) 10 ptr ! 20 ptr 8 + ! ptr @ ptr 8 + @ ;"
+     ": main 16 malloc test ;",
+     2,
+     20,
      10},
+    // Setting and getting multiple 32bit words values in memory
+    {": test ( ptr ) 10 ptr w! 20 ptr 4 + w! ptr w@ ptr 4 + w@ ;"
+     ": main 16 malloc test ;",
+     2,
+     20,
+     10},
+    // Setting and getting multiple 16bit half-words values in memory
+    {": test ( ptr ) 10 ptr h! 20 ptr 4 + h! ptr h@ ptr 4 + h@ ;"
+     ": main 16 malloc test ;",
+     2,
+     20,
+     10},
+    // Setting and getting multiple bytes values in memory
+    {": test ( ptr ) 10 ptr b! 20 ptr 4 + b! ptr b@ ptr 4 + b@ ;"
+     ": main 16 malloc test ;",
+     2,
+     20,
+     10},
+    // Setting and getting multiple bytes values in memory,
+    // with values exceeding byte range to test truncation
+    {": test ( ptr ) 300 ptr b! 1024 ptr 4 + b! ptr b@ ptr 4 + b@ ;"
+     ": main 16 malloc test ;",
+     2,
+     0,
+     44}
+
 };
 
 int main() {

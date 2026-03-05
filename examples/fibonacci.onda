@@ -1,0 +1,7 @@
+:fib
+  if dup 2 < then
+   if dup 0 == then drop 0 else drop 1 end
+  else
+    dup 1 - fib swap 2 - fib +
+  end
+;

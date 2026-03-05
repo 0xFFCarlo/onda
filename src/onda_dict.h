@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 typedef struct {
-  char* key;
+  const char* key;
   size_t key_len;
   uint64_t value;
 } onda_dict_slot_t;

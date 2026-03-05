@@ -2,7 +2,15 @@
 
 #include "onda_util.h"
 
+#include <stdbool.h>
 #include <string.h>
+
+static char* dup_span(const char* key, size_t key_len) {
+  char* s = onda_malloc(key_len + 1);
+  memcpy(s, key, key_len);
+  s[key_len] = '\0';
+  return s;
+}
 
 static inline uint32_t hash_str(const char* s, size_t len) {
   uint32_t hash = 5381;
@@ -10,6 +18,12 @@ static inline uint32_t hash_str(const char* s, size_t len) {
     hash = ((hash << 5) + hash) + (uint8_t)s[i];
   return hash;
 }
+
+static void _onda_dict_put(onda_dict_t* d,
+                           const char* key,
+                           size_t key_len,
+                           uint64_t value,
+                           bool alloc_key);
 
 static void onda_dict_resize(onda_dict_t* d, size_t new_cap) {
   onda_dict_slot_t* old = d->slots;
@@ -21,10 +35,40 @@ static void onda_dict_resize(onda_dict_t* d, size_t new_cap) {
 
   for (size_t i = 0; i < old_cap; i++) {
     if (old[i].key)
-      onda_dict_put(d, old[i].key, old[i].key_len, old[i].value);
+      _onda_dict_put(d, old[i].key, old[i].key_len, old[i].value, false);
   }
   if (old)
     onda_free(old);
+}
+
+static void _onda_dict_put(onda_dict_t* d,
+                           const char* key,
+                           size_t key_len,
+                           uint64_t value,
+                           bool alloc_key) {
+  if (d->count * 2 >= d->capacity)
+    onda_dict_resize(d, d->capacity ? d->capacity * 2 : 16);
+
+  const uint32_t h = hash_str(key, key_len);
+  const size_t mask = d->capacity - 1;
+
+  for (size_t i = 0;; i++) {
+    size_t idx = (h + i) & mask;
+    onda_dict_slot_t* s = &d->slots[idx];
+
+    if (!s->key) {
+      s->key = alloc_key ? dup_span(key, key_len) : key;
+      s->key_len = key_len;
+      s->value = value;
+      d->count++;
+      return;
+    }
+
+    if (memcmp(s->key, key, key_len) == 0 && s->key_len == key_len) {
+      s->value = value; // optional overwrite
+      return;
+    }
+  }
 }
 
 void onda_dict_init(onda_dict_t* d) {
@@ -38,7 +82,7 @@ void onda_dict_free(onda_dict_t* d) {
     return;
 
   for (size_t i = 0; i < d->capacity; i++)
-    onda_free(d->slots[i].key);
+    onda_free((char*)d->slots[i].key);
   onda_free(d->slots);
 
   d->slots = NULL;
@@ -63,7 +107,7 @@ int onda_dict_get(onda_dict_t* d,
     if (!s->key)
       return 1;
 
-    if (strncmp(s->key, key, key_len) == 0 && s->key_len == key_len) {
+    if (memcmp(s->key, key, key_len) == 0 && s->key_len == key_len) {
       *out = s->value;
       return 0;
     }
@@ -75,27 +119,5 @@ void onda_dict_put(onda_dict_t* d,
                    const char* key,
                    size_t key_len,
                    uint64_t value) {
-  if (d->count * 2 >= d->capacity)
-    onda_dict_resize(d, d->capacity ? d->capacity * 2 : 16);
-
-  const uint32_t h = hash_str(key, key_len);
-  const size_t mask = d->capacity - 1;
-
-  for (size_t i = 0;; i++) {
-    size_t idx = (h + i) & mask;
-    onda_dict_slot_t* s = &d->slots[idx];
-
-    if (!s->key) {
-      s->key = strdup(key);
-      s->key_len = key_len;
-      s->value = value;
-      d->count++;
-      return;
-    }
-
-    if (strncmp(s->key, key, key_len) == 0 && s->key_len == key_len) {
-      s->value = value; // optional overwrite
-      return;
-    }
-  }
+  _onda_dict_put(d, key, key_len, value, true);
 }

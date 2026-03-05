@@ -56,6 +56,28 @@
   (0x91000000u | (((imm12)&0xFFFu) << 10) | (((src)&31u) << 5) | ((dst)&31u))
 #define AA64_SUBI(dst, src, imm12)                                             \
   (0xD1000000u | (((imm12)&0xFFFu) << 10) | (((src)&31u) << 5) | ((dst)&31u))
+// 8-bit: STRB/LDRB (offset in bytes, no alignment requirement)
+#define AA64_STRBU(rt, rn, off_bytes)                                          \
+  (0x39000000u | (((off_bytes)&0xFFFu) << 10) | (((rn)&31u) << 5) | ((rt)&31u))
+#define AA64_LDRBU(rt, rn, off_bytes)                                          \
+  (0x39400000u | (((off_bytes)&0xFFFu) << 10) | (((rn)&31u) << 5) | ((rt)&31u))
+
+// 16-bit: STRH/LDRH (offset in bytes, must be multiple of 2)
+#define AA64_STRHU(rt, rn, off_bytes)                                          \
+  (0x79000000u | ((((off_bytes) >> 1) & 0xFFFu) << 10) | (((rn)&31u) << 5) |   \
+   ((rt)&31u))
+#define AA64_LDRHU(rt, rn, off_bytes)                                          \
+  (0x79400000u | ((((off_bytes) >> 1) & 0xFFFu) << 10) | (((rn)&31u) << 5) |   \
+   ((rt)&31u))
+
+// 32-bit: STR/LDR (Wt) (offset in bytes, must be multiple of 4)
+#define AA64_STRWU(rt, rn, off_bytes)                                          \
+  (0xB9000000u | ((((off_bytes) >> 2) & 0xFFFu) << 10) | (((rn)&31u) << 5) |   \
+   ((rt)&31u))
+#define AA64_LDRWU(rt, rn, off_bytes)                                          \
+  (0xB9400000u | ((((off_bytes) >> 2) & 0xFFFu) << 10) | (((rn)&31u) << 5) |   \
+   ((rt)&31u))
+
 // 64-bit STR/LDR unsigned immediate, offset in BYTES (must be multiple of 8)
 #define AA64_STRU(rt, rn, off_bytes)                                           \
   (0xF9000000u | ((((off_bytes) >> 3) & 0xFFFu) << 10) | (((rn)&31u) << 5) |   \
@@ -63,6 +85,7 @@
 #define AA64_LDRU(rt, rn, off_bytes)                                           \
   (0xF9400000u | ((((off_bytes) >> 3) & 0xFFFu) << 10) | (((rn)&31u) << 5) |   \
    ((rt)&31u))
+
 // Put address of nearby instruction into register, in bytes
 #define AA64_ADR(rd, imm21)                                                    \
   (0x10000000u | ((((uint32_t)(imm21)) & 0x3u) << 29) |                        \
@@ -206,6 +229,33 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       const uint8_t local_id = bytecode[bcode_pos++];
       EMIT2(AA64_STRU(0, 21, local_id * 8), AA64_POP_STACK(0));
     } break;
+    case ONDA_OP_PUSH_FROM_ADDR_B:
+      EMIT(AA64_LDRBU(0, 0, 0)); // x0 = *(uint8_t*)x0
+      break;
+    case ONDA_OP_STORE_TO_ADDR_B:
+      EMIT(AA64_LDRBU(7, 31, 0));  // x7 = value from [sp]
+      EMIT(AA64_STRBU(7, 0, 0));   // *(uint8_t*)x0 = x7
+      EMIT(AA64_LDRU(0, 31, 16));  // x0 = next item below value
+      EMIT(AA64_ADDI(31, 31, 32)); // sp += 32
+      break;
+    case ONDA_OP_PUSH_FROM_ADDR_HW:
+      EMIT(AA64_LDRHU(0, 0, 0)); // x0 = *(uint16_t*)x0
+      break;
+    case ONDA_OP_STORE_TO_ADDR_HW:
+      EMIT(AA64_LDRHU(7, 31, 0));  // x7 = value from [sp]
+      EMIT(AA64_STRHU(7, 0, 0));   // *(uint16_t*)x0 = x7
+      EMIT(AA64_LDRU(0, 31, 16));  // x0 = next item below value
+      EMIT(AA64_ADDI(31, 31, 32)); // sp += 32
+      break;
+    case ONDA_OP_PUSH_FROM_ADDR_W:
+      EMIT(AA64_LDRWU(0, 0, 0)); // x0 = *(uint32_t*)x0
+      break;
+    case ONDA_OP_STORE_TO_ADDR_W:
+      EMIT(AA64_LDRWU(7, 31, 0));  // x7 = value from [sp]
+      EMIT(AA64_STRWU(7, 0, 0));   // *(uint32_t*)x0 = x7
+      EMIT(AA64_LDRU(0, 31, 16));  // x0 = next item below value
+      EMIT(AA64_ADDI(31, 31, 32)); // sp += 32
+      break;
     case ONDA_OP_PUSH_FROM_ADDR_DW:
       EMIT(AA64_LDRU(0, 0, 0)); // x0 = *(uint64_t*)x0
       break;

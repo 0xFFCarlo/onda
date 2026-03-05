@@ -66,6 +66,7 @@ static const char* opcode_to_str[ONDA_OP_COUNT] = {
     [ONDA_OP_JUMP] = "JUMP",
     [ONDA_OP_JUMP_IF_FALSE] = "JUMP_IF_FALSE",
     [ONDA_OP_CALL] = "CALL",
+    [ONDA_OP_CALL_NATIVE] = "CALL_NATIVE",
     [ONDA_OP_PRINT] = "PRINT",
     [ONDA_OP_PRINT_STR] = "PRINT_STR",
     [ONDA_OP_MALLOC] = "MALLOC",
@@ -81,6 +82,7 @@ static const uint8_t opcode_args_byte[ONDA_OP_COUNT] = {
     [ONDA_OP_JUMP] = sizeof(int16_t),
     [ONDA_OP_JUMP_IF_FALSE] = sizeof(int16_t),
     [ONDA_OP_CALL] = sizeof(int32_t) + 2,
+    [ONDA_OP_CALL_NATIVE] = sizeof(uint64_t),
 };
 
 void onda_vm_print_bytecode(const uint8_t* code, size_t code_size) {
@@ -169,6 +171,7 @@ int onda_vm_run(onda_vm_t* vm) {
       [ONDA_OP_JUMP] = &&op_jmp,
       [ONDA_OP_JUMP_IF_FALSE] = &&op_jmp_if_false,
       [ONDA_OP_CALL] = &&op_call,
+      [ONDA_OP_CALL_NATIVE] = &&op_call_native,
       [ONDA_OP_PRINT] = &&op_print,
       [ONDA_OP_PRINT_STR] = &&op_print_str,
       [ONDA_OP_MALLOC] = &&op_malloc,
@@ -379,6 +382,13 @@ op_ret:
   vm->pc = vm->frame_bp[0];                  // return address
   vm->frame_bp = (uint64_t*)vm->frame_bp[1]; // restore previous bp
   DISPATCH();
+op_call_native : {
+  onda_native_fn_cb_t fn;
+  memcpy(&fn, &vm->code[vm->pc], sizeof(uint64_t));
+  vm->pc += sizeof(uint64_t);
+  fn(&vm->data_stack[vm->sp - 1]); // pass pointer to TOS as argument
+  DISPATCH();
+}
 op_print:
   onda_print_u64((uint64_t)vm->data_stack[--vm->sp]);
   DISPATCH();

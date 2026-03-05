@@ -8,59 +8,16 @@
 
 #define CODE_BUF_SIZE 1024
 
-static int read_file(const char* filename,
-                     uint8_t* buffer,
-                     size_t buffer_size,
-                     size_t* out_size) {
-  FILE* f = fopen(filename, "rb");
-  if (!f) {
-    fprintf(stderr, "Failed to open file: %s\n", filename);
-    return -1;
-  }
-  fseek(f, 0, SEEK_END);
-  long file_size = ftell(f);
-  fseek(f, 0, SEEK_SET);
-  if (file_size < 0 || (size_t)file_size > buffer_size) {
-    fprintf(stderr,
-            "File size (%ld bytes) exceeds buffer capacity (%zu bytes)\n",
-            file_size,
-            buffer_size);
-    fclose(f);
-    return -1;
-  }
-  size_t read_size = fread(buffer, 1, file_size, f);
-  fclose(f);
-  if (read_size != (size_t)file_size) {
-    fprintf(stderr,
-            "Failed to read entire file: expected %ld bytes, got %zu bytes\n",
-            file_size,
-            read_size);
-    return -1;
-  }
-  *out_size = read_size;
-  buffer[read_size] = '\0'; // null-terminate for lexer
-  return 0;
-}
-
 int main(int argc, char* argv[]) {
   struct timespec start, end;
   if (argc < 2) {
     fprintf(stderr, "Usage: %s <source_file>\n", argv[0]);
     return 1;
   }
-  uint8_t filebuf[2048];
-  size_t file_size = 0;
-  if (read_file(argv[1], filebuf, sizeof(filebuf), &file_size) != 0)
-    return 1;
-  onda_lexer_t lexer = {
-      .src = (const char*)filebuf,
-      .pos = 0,
-      .line = 0,
-      .column = 0,
-  };
-  onda_code_obj_t cobj;
+  onda_lexer_t lexer = {0};
+  onda_code_obj_t cobj = {0};
   onda_code_obj_init(&cobj, CODE_BUF_SIZE);
-  if (onda_compile(&lexer, &cobj) != 0) {
+  if (onda_compile_file(argv[1], &lexer, &cobj) != 0) {
     fprintf(stderr, "Failed to parse source file: %s\n", argv[1]);
     return 1;
   }

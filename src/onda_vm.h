@@ -17,6 +17,7 @@ typedef enum onda_op_type {
   ONDA_OP_JUMP,
   ONDA_OP_JUMP_IF_FALSE,
   ONDA_OP_CALL,
+  ONDA_OP_CALL_NATIVE,
   // Arithmetic Operations
   ONDA_OP_ADD,
   ONDA_OP_SUB,
@@ -80,7 +81,7 @@ typedef struct onda_vm {
 } onda_vm_t;
 
 // Native function pointer to C code
-typedef int (*onda_native_fn_cb_t)(onda_vm_t* vm);
+typedef int (*onda_native_fn_cb_t)(uint64_t* data_stack);
 
 // Stores native function and its name
 typedef struct {
