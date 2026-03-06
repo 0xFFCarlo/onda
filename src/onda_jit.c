@@ -1,4 +1,7 @@
 #include "onda_jit.h"
+#if defined(__aarch64__)
+#include "onda_jit_aarch64.h"
+#endif
 
 #include <errno.h>
 #include <pthread.h>
@@ -64,4 +67,22 @@ uint64_t onda_jit_run(const uint8_t* machine_code, size_t machine_code_size) {
 
   munmap(mem, allocsz);
   return ret;
+}
+
+int onda_jit_compile(const uint8_t* bytecode,
+                     const size_t bytecode_entry_pc,
+                     size_t bytecode_size,
+                     int64_t* frame_bp,
+                     uint8_t** out_machine_code,
+                     size_t* out_machine_code_size) {
+#if defined(__aarch64__)
+  return onda_jit_aarch64(bytecode,
+                          bytecode_entry_pc,
+                          bytecode_size,
+                          frame_bp,
+                          out_machine_code,
+                          out_machine_code_size);
+#else
+  return -1; // JIT compilation not supported on this platform
+#endif // __aarch64__
 }

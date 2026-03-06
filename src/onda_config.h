@@ -1,0 +1,15 @@
+#ifndef ONDA_CONFIG_H
+#define ONDA_CONFIG_H
+
+#if defined(__aarch64__)
+#define ONDA_CAN_JIT
+#endif
+
+#define ONDA_DATA_STACK_SIZE  1024
+#define ONDA_FRAME_STACK_SIZE 1024
+// #define ONDA_VM_DEBUG_MODE
+#define ONDA_MAX_FILENAME_LEN  64
+#define ONDA_MAX_FILEPATH_LEN  256
+#define ONDA_MAX_WORD_NAME_LEN 32
+
+#endif // ONDA_CONFIG_H

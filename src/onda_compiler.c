@@ -49,7 +49,7 @@ static void skip_whitespace_and_comments(onda_lexer_t* lx) {
 
 // Decode a string literal (without surrounding quotes) into arena memory.
 // Supports escapes: \n \t \r \" \\ . Returns 0 on success.
-static int lex_string(onda_lexer_t* lx, const char** dst, int* dst_len) {
+static int lex_string(onda_lexer_t* lx, const char** dst, size_t* dst_len) {
   // opening '"' already at curr(lx)
   advance(lx); // skip the opening quote
   size_t start_pos = lx->pos;
@@ -225,7 +225,7 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
   }
 }
 
-void onda_token_peek(onda_lexer_t* lexer, onda_token_t* t) {
+static void onda_token_peek(onda_lexer_t* lexer, onda_token_t* t) {
   size_t saved_pos = lexer->pos;
   size_t saved_line = lexer->line;
   size_t saved_column = lexer->column;
@@ -507,45 +507,45 @@ typedef struct {
 
 static const onda_imm_word_t imm_words[] = {
     // Operators
-    {"+", ONDA_OP_ADD},
-    {"-", ONDA_OP_SUB},
-    {"*", ONDA_OP_MUL},
-    {"/", ONDA_OP_DIV},
-    {"%", ONDA_OP_MOD},
-    {"++", ONDA_OP_INC},
-    {"--", ONDA_OP_DEC},
-    {"not", ONDA_OP_NOT},
-    {"==", ONDA_OP_EQ},
-    {"!=", ONDA_OP_NEQ},
-    {"<", ONDA_OP_LT},
-    {"<=", ONDA_OP_LTE},
-    {">", ONDA_OP_GT},
-    {">=", ONDA_OP_GTE},
-    {"and", ONDA_OP_AND},
-    {"or", ONDA_OP_OR},
-    {"drop", ONDA_OP_DROP},
-    {"dup", ONDA_OP_DUP},
-    {"over", ONDA_OP_OVER},
-    {"rot", ONDA_OP_ROT},
-    {"swap", ONDA_OP_SWAP},
-    {"ret", ONDA_OP_RET},
-    {"b@", ONDA_OP_PUSH_FROM_ADDR_B},
-    {"b!", ONDA_OP_STORE_TO_ADDR_B},
-    {"h@", ONDA_OP_PUSH_FROM_ADDR_HW},
-    {"h!", ONDA_OP_STORE_TO_ADDR_HW},
-    {"w@", ONDA_OP_PUSH_FROM_ADDR_W},
-    {"w!", ONDA_OP_STORE_TO_ADDR_W},
-    {"@", ONDA_OP_PUSH_FROM_ADDR_DW},
-    {"!", ONDA_OP_STORE_TO_ADDR_DW},
+    {"+", ONDA_OP_ADD, .handler = NULL},
+    {"-", ONDA_OP_SUB, .handler = NULL},
+    {"*", ONDA_OP_MUL, .handler = NULL},
+    {"/", ONDA_OP_DIV, .handler = NULL},
+    {"%", ONDA_OP_MOD, .handler = NULL},
+    {"++", ONDA_OP_INC, .handler = NULL},
+    {"--", ONDA_OP_DEC, .handler = NULL},
+    {"not", ONDA_OP_NOT, .handler = NULL},
+    {"==", ONDA_OP_EQ, .handler = NULL},
+    {"!=", ONDA_OP_NEQ, .handler = NULL},
+    {"<", ONDA_OP_LT, .handler = NULL},
+    {"<=", ONDA_OP_LTE, .handler = NULL},
+    {">", ONDA_OP_GT, .handler = NULL},
+    {">=", ONDA_OP_GTE, .handler = NULL},
+    {"and", ONDA_OP_AND, .handler = NULL},
+    {"or", ONDA_OP_OR, .handler = NULL},
+    {"drop", ONDA_OP_DROP, .handler = NULL},
+    {"dup", ONDA_OP_DUP, .handler = NULL},
+    {"over", ONDA_OP_OVER, .handler = NULL},
+    {"rot", ONDA_OP_ROT, .handler = NULL},
+    {"swap", ONDA_OP_SWAP, .handler = NULL},
+    {"ret", ONDA_OP_RET, .handler = NULL},
+    {"b@", ONDA_OP_PUSH_FROM_ADDR_B, .handler = NULL},
+    {"b!", ONDA_OP_STORE_TO_ADDR_B, .handler = NULL},
+    {"h@", ONDA_OP_PUSH_FROM_ADDR_HW, .handler = NULL},
+    {"h!", ONDA_OP_STORE_TO_ADDR_HW, .handler = NULL},
+    {"w@", ONDA_OP_PUSH_FROM_ADDR_W, .handler = NULL},
+    {"w!", ONDA_OP_STORE_TO_ADDR_W, .handler = NULL},
+    {"@", ONDA_OP_PUSH_FROM_ADDR_DW, .handler = NULL},
+    {"!", ONDA_OP_STORE_TO_ADDR_DW, .handler = NULL},
     {"->", .handler = onda_compile_store_local},
     {"if", .handler = onda_compile_if},
     {"while", .handler = onda_compile_while},
     {"continue", .handler = onda_compile_continue},
     {"import", .handler = onda_compile_import},
-    {"print", ONDA_OP_PRINT},
-    {"prints", ONDA_OP_PRINT_STR},
-    {"malloc", ONDA_OP_MALLOC},
-    {"free", ONDA_OP_FREE},
+    {"print", ONDA_OP_PRINT, .handler = NULL},
+    {"prints", ONDA_OP_PRINT_STR, .handler = NULL},
+    {"malloc", ONDA_OP_MALLOC, .handler = NULL},
+    {"free", ONDA_OP_FREE, .handler = NULL},
 };
 static const size_t num_imm_words = sizeof(imm_words) / sizeof(imm_words[0]);
 
@@ -558,12 +558,12 @@ static int onda_compile_word(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
     return -1;
   }
 
-  if (tok.len >= ONDA_MAX_WORD_LEN) {
+  if (tok.len >= ONDA_MAX_WORD_NAME_LEN) {
     print_err(lexer,
               "Word name '%.*s' exceeds max length of %d",
               tok.len,
               tok.start,
-              ONDA_MAX_WORD_LEN - 1);
+              ONDA_MAX_WORD_NAME_LEN - 1);
   }
 
   // Check that word definition does not match any immediate word
@@ -767,8 +767,8 @@ int onda_compile(onda_lexer_t* lexer, onda_code_obj_t* code_obj) {
 int onda_compile_file(const char* filepath,
                       onda_lexer_t* lexer,
                       onda_code_obj_t* cobj) {
-  char filename[128];
-  char resolved_path[256];
+  char filename[ONDA_MAX_FILENAME_LEN];
+  char resolved_path[ONDA_MAX_FILEPATH_LEN];
   // Extract filename
   const char* last_slash = strrchr(filepath, '/');
   if (last_slash)

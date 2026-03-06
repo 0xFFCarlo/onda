@@ -1,5 +1,5 @@
-#include "onda_comp_aarch64.h"
 #include "onda_compiler.h"
+#include "onda_config.h"
 #include "onda_jit.h"
 #include "onda_vm.h"
 
@@ -41,18 +41,18 @@ int main(int argc, char* argv[]) {
              (end.tv_nsec - start.tv_nsec) / 1000000.0);
   printf("\n");
 
-#if defined(__aarch64__)
-  // Compile to machine code (AArch64)
+#ifdef ONDA_CAN_JIT
+  // Compile to machine code
   uint8_t* machine_code = NULL;
   size_t machine_code_size = 0;
-  uint64_t frame_stack[ONDA_VM_FRAME_STACK_SIZE];
-  uint64_t* frame_bp = frame_stack + ONDA_VM_FRAME_STACK_SIZE;
-  onda_comp_aarch64(cobj.code,
-                    cobj.entry_pc,
-                    cobj.size,
-                    frame_bp,
-                    &machine_code,
-                    &machine_code_size);
+  int64_t frame_stack[ONDA_FRAME_STACK_SIZE];
+  int64_t* frame_bp = frame_stack + ONDA_FRAME_STACK_SIZE;
+  onda_jit_compile(cobj.code,
+                   cobj.entry_pc,
+                   cobj.size,
+                   frame_bp,
+                   &machine_code,
+                   &machine_code_size);
 
   // Execute program in JIT
   printf("Executing with JIT:\n");
@@ -63,7 +63,7 @@ int main(int argc, char* argv[]) {
   printf("JIT execution time: %.3f ms\n",
          (end.tv_sec - start.tv_sec) * 1000.0 +
              (end.tv_nsec - start.tv_nsec) / 1000000.0);
-#endif // __aarch64__
+#endif // ONDA_CAN_JIT
 
   onda_vm_free(vm);
   return 0;

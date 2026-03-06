@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-onda_vm_t* onda_vm_new() {
+onda_vm_t* onda_vm_new(void) {
   onda_vm_t* vm = onda_calloc(1, sizeof(onda_vm_t));
   return vm;
 }
@@ -98,12 +98,13 @@ void onda_vm_print_bytecode(const uint8_t* code, size_t code_size) {
   }
 }
 
-void debug_step(onda_vm_t* vm) {
+#ifdef ONDA_VM_DEBUG_MODE
+static void debug_step(onda_vm_t* vm) {
   uint8_t opcode = vm->code[vm->pc];
   printf("PC: %04zu, SP: %04zu, FBP: %04zu, Opcode: %s\n",
          vm->pc,
          vm->sp,
-         (vm->frame_stack + ONDA_VM_FRAME_STACK_SIZE) - vm->frame_bp,
+         (vm->frame_stack + ONDA_FRAME_STACK_SIZE) - vm->frame_bp,
          opcode_to_str[opcode]);
   printf("DS: {");
   for (size_t i = 0; i < vm->sp; i++) {
@@ -114,10 +115,10 @@ void debug_step(onda_vm_t* vm) {
   printf("}\n");
   printf("FS: {");
   size_t frame_size;
-  if (vm->frame_bp == vm->frame_stack + ONDA_VM_FRAME_STACK_SIZE) {
+  if (vm->frame_bp == vm->frame_stack + ONDA_FRAME_STACK_SIZE) {
     frame_size = 2;
   } else {
-    frame_size = (uint64_t*)vm->frame_bp[1] - vm->frame_bp;
+    frame_size = (int64_t*)vm->frame_bp[1] - vm->frame_bp;
   }
   for (size_t i = 0; i < frame_size; i++) {
     printf("%lld", vm->frame_bp[i]);
@@ -126,10 +127,11 @@ void debug_step(onda_vm_t* vm) {
   }
   printf("}\n\n");
 }
+#endif
 
 int onda_vm_run(onda_vm_t* vm) {
   vm->pc = vm->entry_pc;
-  vm->frame_bp = vm->frame_stack + ONDA_VM_FRAME_STACK_SIZE;
+  vm->frame_bp = vm->frame_stack + ONDA_FRAME_STACK_SIZE;
   vm->sp = 0;
 
   static const void* dispatch_table[] = {
@@ -364,7 +366,7 @@ op_call : {
   const uint8_t locals = vm->code[vm->pc++];
   memcpy(&branch_offset, &vm->code[vm->pc], sizeof(int32_t));
   vm->pc += sizeof(int32_t);
-  const uint64_t* prev_bp = vm->frame_bp;
+  const int64_t* prev_bp = vm->frame_bp;
   // reserve space for return address, previous bp and locals
   vm->frame_bp -= (2 + locals);
   vm->frame_bp[0] = vm->pc;            // return address
@@ -377,16 +379,21 @@ op_call : {
   DISPATCH();
 }
 op_ret:
-  if (vm->frame_bp == vm->frame_stack + ONDA_VM_FRAME_STACK_SIZE)
-    return 0;                                // HALT
-  vm->pc = vm->frame_bp[0];                  // return address
-  vm->frame_bp = (uint64_t*)vm->frame_bp[1]; // restore previous bp
+  if (vm->frame_bp == vm->frame_stack + ONDA_FRAME_STACK_SIZE)
+    return 0;                               // HALT
+  vm->pc = vm->frame_bp[0];                 // return address
+  vm->frame_bp = (int64_t*)vm->frame_bp[1]; // restore previous bp
   DISPATCH();
 op_call_native : {
   onda_native_fn_cb_t fn;
   memcpy(&fn, &vm->code[vm->pc], sizeof(uint64_t));
   vm->pc += sizeof(uint64_t);
-  fn(&vm->data_stack[vm->sp - 1]); // pass pointer to TOS as argument
+  int64_t* new_ds = fn(&vm->data_stack[vm->sp - 1]);
+  if (new_ds == NULL) { // Check for errors
+    fprintf(stderr, "Error: native function returned NULL\n");
+    exit(1);
+  }
+  vm->sp = new_ds - vm->data_stack;
   DISPATCH();
 }
 op_print:

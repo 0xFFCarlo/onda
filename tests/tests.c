@@ -1,4 +1,3 @@
-#include "../src/onda_comp_aarch64.h"
 #include "../src/onda_compiler.h"
 #include "../src/onda_jit.h"
 #include "../src/onda_vm.h"
@@ -234,7 +233,7 @@ int main() {
   onda_vm_t* vm = onda_vm_new();
   uint8_t* machine_code = NULL;
   size_t machine_code_size = 0;
-  uint64_t frame_stack[ONDA_VM_FRAME_STACK_SIZE];
+  int64_t frame_stack[ONDA_FRAME_STACK_SIZE];
 
   // Run tests using VM
   printf("Testing with VM:\n");
@@ -292,7 +291,7 @@ int main() {
 
   onda_vm_free(vm);
 
-#if defined(__aarch64__)
+#ifdef ONDA_CAN_JIT
   // Run tests using JIT only (without VM execution)
   printf("\nTesting with JIT:\n");
   for (i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
@@ -309,13 +308,13 @@ int main() {
       goto failed;
     }
     // JIT test
-    uint64_t* frame_bp = frame_stack + ONDA_VM_FRAME_STACK_SIZE;
-    onda_comp_aarch64(cobj.code,
-                      cobj.entry_pc,
-                      cobj.size,
-                      frame_bp,
-                      &machine_code,
-                      &machine_code_size);
+    int64_t* frame_bp = frame_stack + ONDA_FRAME_STACK_SIZE;
+    onda_jit_compile(cobj.code,
+                     cobj.entry_pc,
+                     cobj.size,
+                     frame_bp,
+                     &machine_code,
+                     &machine_code_size);
     uint64_t tos = onda_jit_run(machine_code, machine_code_size);
     if (tc->stack_size > 0) {
       if (tos != tc->expected_result_a) {
@@ -338,7 +337,7 @@ int main() {
     onda_code_obj_free(&cobj);
     printf("Test %zu passed.\n", i);
   }
-#endif // defined(__aarch64__)
+#endif // ONDA_CAN_JIT
 
   return 0;
 failed:

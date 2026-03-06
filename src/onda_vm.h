@@ -1,15 +1,12 @@
 #ifndef ONDA_VM_H
 #define ONDA_VM_H
 
+#include "onda_config.h"
 #include "onda_dict.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-
-//#define ONDA_VM_DEBUG_MODE
-#define ONDA_VM_STACK_SIZE       1024
-#define ONDA_VM_FRAME_STACK_SIZE 1024
 
 typedef enum onda_op_type {
   // Control Flow
@@ -70,18 +67,18 @@ typedef struct onda_vm {
   size_t entry_pc;
   size_t pc;
 
-  uint64_t data_stack[ONDA_VM_STACK_SIZE];
+  int64_t data_stack[ONDA_DATA_STACK_SIZE];
   size_t sp; // top of stack index (points to next free slot)
 
-  uint64_t frame_stack[ONDA_VM_FRAME_STACK_SIZE];
-  uint64_t* frame_bp;
-  uint64_t* frame_prev_bp;
+  int64_t frame_stack[ONDA_FRAME_STACK_SIZE];
+  int64_t* frame_bp;
+  int64_t* frame_prev_bp;
 
   bool debug_mode;
 } onda_vm_t;
 
 // Native function pointer to C code
-typedef int (*onda_native_fn_cb_t)(uint64_t* data_stack);
+typedef int64_t* (*onda_native_fn_cb_t)(int64_t* data_stack);
 
 // Stores native function and its name
 typedef struct {
@@ -100,7 +97,7 @@ typedef struct {
 } onda_native_table_t;
 
 // Allocate a new VM
-onda_vm_t* onda_vm_new();
+onda_vm_t* onda_vm_new(void);
 
 // Load code into the VM
 int onda_vm_load_code(onda_vm_t* vm,
@@ -122,9 +119,8 @@ static inline onda_native_fn_t* onda_native_fn_get(onda_native_table_t* table,
                                                    const char* name,
                                                    size_t name_len) {
   uint64_t idx;
-  if (onda_dict_get(&table->items_map, name, name_len, &idx) == 0) {
+  if (onda_dict_get(&table->items_map, name, name_len, &idx) == 0)
     return &table->items[idx];
-  }
   return NULL; // not found
 }
 

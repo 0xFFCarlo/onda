@@ -1,14 +1,12 @@
 #ifndef ONDA_COMPILER_H
 #define ONDA_COMPILER_H
 
+#include "onda_config.h"
 #include "onda_dict.h"
 #include "onda_vm.h"
 
 #include <stddef.h>
 #include <stdint.h>
-
-// Maximum word name lenght
-#define ONDA_MAX_WORD_LEN 32
 
 // Locals ids in bytecode start from 2 as position 0 and 1 in stack frame
 // are reserved for return address and previous frame base pointer
@@ -33,7 +31,7 @@ typedef struct {
     int64_t number;
   };
   const char* start;
-  int len;
+  size_t len;
 } onda_token_t;
 
 typedef struct {
@@ -47,7 +45,7 @@ typedef struct {
 
 // Used to track word locations in the bytecode
 typedef struct onda_word_t {
-  char name[ONDA_MAX_WORD_LEN];
+  char name[ONDA_MAX_WORD_NAME_LEN];
   size_t name_len;
   size_t pc;
   size_t word_len;      // length of the word body in bytecode

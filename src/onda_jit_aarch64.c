@@ -1,4 +1,6 @@
-#include "onda_comp_aarch64.h"
+#if defined(__aarch64__)
+
+#include "onda_jit_aarch64.h"
 
 #include "onda_std.h"
 #include "onda_util.h"
@@ -99,13 +101,13 @@ typedef struct onda_unresolved_jump_t {
   uint8_t jump_type;
 } onda_unresolved_jump_t;
 
-size_t onda_comp_aarch64(const uint8_t* bytecode,
-                         const size_t bytecode_entry_pc,
-                         size_t bytecode_size,
-                         uint64_t* frame_bp,
-                         uint8_t** out_machine_code,
-                         size_t* out_machine_code_size) {
-  int bcode_pos = 0;
+size_t onda_jit_aarch64(const uint8_t* bytecode,
+                        const size_t bytecode_entry_pc,
+                        size_t bytecode_size,
+                        int64_t* frame_bp,
+                        uint8_t** out_machine_code,
+                        size_t* out_machine_code_size) {
+  size_t bcode_pos = 0;
   uint32_t* mcode = onda_malloc(ONDA_MCODE_INIT_CAP * sizeof(uint32_t));
   int32_t* bcode_to_mcode = onda_malloc(bytecode_size * sizeof(int32_t));
   size_t mcode_capacity = ONDA_MCODE_INIT_CAP;
@@ -170,7 +172,7 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
     while (*link) {
       onda_unresolved_jump_t* jmp = *link;
 
-      const int32_t target_bpos = jmp->bcode_pos + jmp->bcode_jmp_offset;
+      const size_t target_bpos = jmp->bcode_pos + jmp->bcode_jmp_offset;
       if (target_bpos != bcode_pos) {
         link = &jmp->next;
         continue;
@@ -265,7 +267,6 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       EMIT(AA64_LDRU(0, 31, 16));  // x0 = next item below value
       EMIT(AA64_ADDI(31, 31, 32)); // sp += 32
       break;
-    // TODO: implement byte and halfword memory access opcodes
     case ONDA_OP_ADD:
       EMIT2(AA64_POP_STACK(1), AA64_ADD(0, 1, 0));
       break;
@@ -442,7 +443,7 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
       EMIT(AA64_ADR(6, 3 * 4));
       EMIT(AA64_STRU(6, 21, 0 * 8));
       if (bcode_to_mcode[bcode_pos + branch_offset] == -1) {
-        printf("Error: Unresolved jump for CALL at bytecode position %d\n",
+        printf("Error: Unresolved jump for CALL at bytecode position %ld\n",
                bcode_pos);
       } else {
         const int32_t aa_jmp_offset =
@@ -497,3 +498,5 @@ size_t onda_comp_aarch64(const uint8_t* bytecode,
 
   return 0;
 }
+
+#endif // defined(__aarch64__)
