@@ -5,6 +5,7 @@
 #include "onda_vm.h"
 
 #include <ctype.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -116,16 +117,29 @@ static int lex_string(onda_lexer_t* lx, const char** dst, int* dst_len) {
   return 0;
 }
 
-static int64_t parse_number(const char* s, size_t len) {
-  char* tmp = (char*)onda_malloc(len + 1);
-  if (!tmp)
-    return 0.0;
+static inline void print_err(onda_lexer_t* lx, const char* msg, ...) {
+  fprintf(stderr,
+          "Error at %s:%zu:%zu ",
+          lx->filename ? lx->filename : "<input>",
+          lx->line,
+          lx->column);
+  va_list args;
+  va_start(args, msg);
+  vfprintf(stderr, msg, args);
+  va_end(args);
+}
+
+static int parse_number(const char* s, size_t len, int64_t* out) {
+  static char tmp[32]; // enough for 64-bit integers
+  if (len >= sizeof(tmp)) {
+    fprintf(stderr, "Error: number literal too long\n");
+    return -1;
+  }
   memcpy(tmp, s, len);
   tmp[len] = '\0';
   char* endptr = NULL;
-  int64_t v = strtoll(tmp, &endptr, 10);
-  onda_free(tmp);
-  return v;
+  *out = strtoll(tmp, &endptr, 10);
+  return 0;
 }
 
 static int lex_number(onda_lexer_t* lx) {
@@ -176,7 +190,7 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
   case ')':
     return tok1(lexer, t, TOKEN_RPAREN);
   case '|':
-    return tok1(lexer, t, TOkeN_SEPARATOR);
+    return tok1(lexer, t, TOKEN_SEPARATOR);
   case '"': {
     int rc = lex_string(lexer, &t->start, &t->len);
     if (rc) {
@@ -192,7 +206,10 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
   if (isdigit(c) || (c == '-' && isdigit((unsigned char)nextc(lexer)))) {
     t->type = TOKEN_NUMBER;
     t->len = lex_number(lexer);
-    t->number = parse_number(t->start, t->len);
+    if (parse_number(t->start, t->len, &t->number) != 0) {
+      t->type = TOKEN_INVALID;
+      t->len = 0;
+    }
     return;
   }
 
@@ -433,21 +450,12 @@ static int onda_compile_store_local(onda_lexer_t* lexer,
   onda_token_t tok;
   onda_token_next(lexer, &tok);
   if (tok.type != TOKEN_IDENTIFIER) {
-    fprintf(stderr,
-            "Expected local variable name after '->' at line %lu, column %lu\n",
-            lexer->line,
-            lexer->column);
+    print_err(lexer, "Expected local variable name after '->'");
     return -1;
   }
   uint8_t local_id;
   if (onda_scope_get(cobj, tok.start, tok.len, &local_id) != 0) {
-    fprintf(stderr,
-            "Undefined variable '%.*s' in store operation at line %lu, column "
-            "%lu\n",
-            tok.len,
-            tok.start,
-            lexer->line,
-            lexer->column);
+    print_err(lexer, "Undefined variable in store operation");
     return -1;
   }
   CODE_PUSH_BYTE(ONDA_OP_STORE_LOCAL);
@@ -460,20 +468,12 @@ static int onda_compile_import(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   char path[128];
   onda_token_next(lexer, &tok);
   if (tok.type != TOKEN_STRING) {
-    fprintf(stderr,
-            "Expected string literal after 'import' at line %lu, column %lu\n",
-            lexer->line,
-            lexer->column);
+    print_err(lexer, "Expected string literal after 'import'");
     return -1;
   }
 
   if (tok.len >= sizeof(path)) {
-    fprintf(
-        stderr,
-        "Import path too long at line %lu, column %lu (max %zu characters)\n",
-        lexer->line,
-        lexer->column,
-        sizeof(path) - 1);
+    print_err(lexer, "Import path too long");
     return -1;
   }
 
@@ -485,11 +485,7 @@ static int onda_compile_import(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
 
 static int onda_compile_continue(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   if (cobj->inner_loop_start_pc == -1) {
-    fprintf(stderr,
-            "Error: 'continue' used outside of a loop at line %lu, column "
-            "%lu\n",
-            lexer->line,
-            lexer->column);
+    print_err(lexer, "'continue' word used outside of a loop");
     return -1;
   }
   // Emit jump back to loop start
@@ -558,35 +554,26 @@ static int onda_compile_word(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   onda_token_t tok;
   onda_token_next(lexer, &tok);
   if (tok.type != TOKEN_IDENTIFIER) {
-    fprintf(stderr,
-            "Expected word name after ':' at line %lu, column %lu\n",
-            lexer->line,
-            lexer->column);
+    print_err(lexer, "Expected word name after ':'");
     return -1;
   }
 
   if (tok.len >= ONDA_MAX_WORD_LEN) {
-    fprintf(stderr,
-            "Word name '%.*s' at line %lu, column %lu exceeds max length of "
-            "%d\n",
-            tok.len,
-            tok.start,
-            lexer->line,
-            lexer->column,
-            ONDA_MAX_WORD_LEN - 1);
+    print_err(lexer,
+              "Word name '%.*s' exceeds max length of %d",
+              tok.len,
+              tok.start,
+              ONDA_MAX_WORD_LEN - 1);
   }
 
   // Check that word definition does not match any immediate word
   for (size_t i = 0; i < num_imm_words; i++) {
     if (strlen(imm_words[i].name) == (size_t)tok.len &&
         strncmp(imm_words[i].name, tok.start, (size_t)tok.len) == 0) {
-      fprintf(stderr,
-              "Word name '%.*s' at line %lu, column %lu conflicts with "
-              "immediate word name\n",
-              tok.len,
-              tok.start,
-              lexer->line,
-              lexer->column);
+      print_err(lexer,
+                "Word name '%.*s' conflicts with immediate word name\n",
+                tok.len,
+                tok.start);
       return -1;
     }
   }
@@ -594,12 +581,7 @@ static int onda_compile_word(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   // Check that word definition does not already exists
   uint64_t word_id;
   if (onda_dict_get(&cobj->words_map, tok.start, tok.len, &word_id) == 0) {
-    fprintf(stderr,
-            "Word name '%.*s' at line %lu, column %lu already defined\n",
-            tok.len,
-            tok.start,
-            lexer->line,
-            lexer->column);
+    print_err(lexer, "Word name '%.*s' already defined\n", tok.len, tok.start);
     return -1;
   }
 
@@ -628,33 +610,28 @@ static int onda_compile_word(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
         onda_token_next(lexer, &tok); // consume ')'
         break;
       }
-      if (tok.type == TOkeN_SEPARATOR) {
+      if (tok.type == TOKEN_SEPARATOR) {
         onda_token_next(lexer, &tok); // consume '|'
         is_argument_section = false;
         continue;
       }
       if (tok.type != TOKEN_IDENTIFIER) {
-        fprintf(
-            stderr,
-            "Expected word argument name in word definition for word '%.*s' at "
-            "line %lu, column %lu\n",
-            (int)word.name_len,
-            word.name,
-            lexer->line,
-            lexer->column);
+        print_err(lexer,
+                  "Expected word argument name in word definition for '%.*s'",
+                  (int)word.name_len,
+                  word.name);
         return -1;
       }
       onda_token_next(lexer, &tok); // consume argument name
       if (onda_scope_set(cobj, tok.start, tok.len, word.locals_count++) != 0) {
-        fprintf(stderr,
-                "Failed to define argument '%.*s' in word definition for word "
-                "'%.*s' at line %lu, column %lu\n",
-                tok.len,
-                tok.start,
-                (int)word.name_len,
-                word.name,
-                lexer->line,
-                lexer->column);
+        print_err(
+            lexer,
+            "Failed to define local variable '%.*s' in word definition for "
+            "word '%.*s' \n",
+            tok.len,
+            tok.start,
+            (int)word.name_len,
+            word.name);
         return -1;
       }
       if (is_argument_section)
@@ -674,13 +651,10 @@ static int onda_compile_word(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
       break;
     }
     if (tok.type == TOKEN_COLON) {
-      fprintf(stderr,
-              "Nested word definition not allowed for word '%.*s' at line "
-              "%lu, column %lu\n",
-              tok.len,
-              tok.start,
-              lexer->line,
-              lexer->column);
+      print_err(lexer,
+                "Nested word definition not allowed for word '%.*s'",
+                tok.len,
+                tok.start);
       return -1;
     }
     int rc = onda_compile_expr(lexer, cobj);
@@ -740,11 +714,8 @@ static int onda_compile_expr(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
     }
 
     // TODO: Is it a C function call?
-    printf("Unknown identifier '%.*s' at line %lu, column %lu\n",
-           tok.len,
-           tok.start,
-           lexer->line,
-           lexer->column);
+
+    print_err(lexer, "Unknown identifier '%.*s'\n", tok.len, tok.start);
     return -1; // unknown identifier
   case TOKEN_NUMBER:
     if (tok.number <= 0x7F && tok.number >= -0x80) {
@@ -774,11 +745,9 @@ static int onda_compile_expr(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   case TOKEN_EOF:
     return 0;
   default:
-    fprintf(stderr,
-            "Unexpected token '%.s' in expression at line %lu, column %lu\n",
-            tok.len > 0 ? tok.start : "<EOF>",
-            lexer->line,
-            lexer->column);
+    print_err(lexer,
+              "Unexpected token '%.s' in expression",
+              tok.len > 0 ? tok.start : "<EOF>");
     return -1;
   }
   return 0;
@@ -830,10 +799,11 @@ int onda_compile_file(const char* filepath,
 
   // Append import path to base path
   if (strlen(resolved_path) + strlen(filepath) >= sizeof(resolved_path)) {
-    fprintf(stderr,
-            "Resolved import path too long for file: %s (max %zu characters)\n",
-            filepath,
-            sizeof(resolved_path) - 1);
+    print_err(
+        lexer,
+        "Resolved import path too long for file: %s (max %zu characters)\n",
+        filepath,
+        sizeof(resolved_path) - 1);
     return -1;
   }
   strcat(resolved_path, filepath);
@@ -842,7 +812,7 @@ int onda_compile_file(const char* filepath,
   size_t import_size;
   char* import_src = read_file(resolved_path, &import_size);
   if (!import_src || import_size == 0) {
-    fprintf(stderr, "Failed to read file: %s\n", resolved_path);
+    print_err(lexer, "Failed to read file: %s\n", resolved_path);
     return -1;
   }
 
@@ -855,7 +825,7 @@ int onda_compile_file(const char* filepath,
   lexer->column = 0;
   int rc = onda_compile(lexer, cobj);
   if (rc != 0) {
-    fprintf(stderr, "Failed to compile file: %s\n", resolved_path);
+    print_err(lexer, "Compilation error in imported file: %s\n", resolved_path);
     return -1;
   }
   onda_free(import_src);

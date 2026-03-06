@@ -1,5 +1,3 @@
-- crash when word definition does not exists, is dictionary referencing
-strings from freed file buffer?
 - call c functions:
     - function callback manipulates data stack
     - do not use sp in jit use separate buffer for data stack
