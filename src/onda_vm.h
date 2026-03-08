@@ -65,36 +65,11 @@ typedef struct onda_vm {
   uint8_t* code;
   size_t code_size;
   size_t entry_pc;
-  size_t pc;
-
   int64_t data_stack[ONDA_DATA_STACK_SIZE];
-  size_t sp; // top of stack index (points to next free slot)
-
   int64_t frame_stack[ONDA_FRAME_STACK_SIZE];
-  int64_t* frame_bp;
-  int64_t* frame_prev_bp;
-
+  size_t sp;
   bool debug_mode;
 } onda_vm_t;
-
-// Native function pointer to C code
-typedef int64_t* (*onda_native_fn_cb_t)(int64_t* data_stack);
-
-// Stores native function and its name
-typedef struct {
-  const char* name;
-  uint8_t name_len;
-  onda_native_fn_cb_t fn;
-  // For documentation
-  uint8_t args_count;
-  uint8_t returns_count;
-} onda_native_fn_t;
-
-typedef struct {
-  onda_native_fn_t* items;
-  size_t count;
-  onda_dict_t items_map;
-} onda_native_table_t;
 
 // Allocate a new VM
 onda_vm_t* onda_vm_new(void);
@@ -113,15 +88,5 @@ int onda_vm_run(onda_vm_t* vm);
 
 // Free VM
 void onda_vm_free(onda_vm_t* vm);
-
-// Get native function by name from the native function table
-static inline onda_native_fn_t* onda_native_fn_get(onda_native_table_t* table,
-                                                   const char* name,
-                                                   size_t name_len) {
-  uint64_t idx;
-  if (onda_dict_get(&table->items_map, name, name_len, &idx) == 0)
-    return &table->items[idx];
-  return NULL; // not found
-}
 
 #endif // ONDA_VM_H

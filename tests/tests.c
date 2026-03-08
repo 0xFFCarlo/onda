@@ -228,12 +228,14 @@ static const test_case_t tests[] = {
 
 int main() {
   onda_lexer_t lexer;
+  onda_env_t env;
   onda_code_obj_t cobj = {0};
   size_t i;
   onda_vm_t* vm = onda_vm_new();
   uint8_t* machine_code = NULL;
   size_t machine_code_size = 0;
   int64_t frame_stack[ONDA_FRAME_STACK_SIZE];
+  onda_env_init(&env);
 
   // Run tests using VM
   printf("Testing with VM:\n");
@@ -246,7 +248,7 @@ int main() {
     lexer.line = 0;
     lexer.pos = 0;
     const test_case_t* tc = &tests[i];
-    if (onda_compile(&lexer, &cobj) != 0) {
+    if (onda_compile(&lexer, &env, &cobj) != 0) {
       fprintf(stderr, "Test %zu failed: compilation error\n", i);
       goto failed;
     }
@@ -303,7 +305,7 @@ int main() {
     lexer.line = 0;
     lexer.pos = 0;
     const test_case_t* tc = &tests[i];
-    if (onda_compile(&lexer, &cobj) != 0) {
+    if (onda_compile(&lexer, &env, &cobj) != 0) {
       fprintf(stderr, "Test %zu failed: compilation error\n", i);
       goto failed;
     }

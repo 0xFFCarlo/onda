@@ -311,9 +311,12 @@ static inline void onda_scope_pop(onda_code_obj_t* code) {
   free(scope);
 }
 
-static int onda_compile_expr(onda_lexer_t* lexer, onda_code_obj_t* cobj);
+static int onda_compile_expr(onda_lexer_t* lexer,
+                             onda_env_t* env,
+                             onda_code_obj_t* cobj);
 
 static inline int onda_compile_until_ident(onda_lexer_t* lexer,
+                                           onda_env_t* env,
                                            onda_code_obj_t* cobj,
                                            const char* ident_a,
                                            const size_t ident_a_len,
@@ -334,16 +337,18 @@ static inline int onda_compile_until_ident(onda_lexer_t* lexer,
         return 1;
       }
     }
-    int rc = onda_compile_expr(lexer, cobj);
+    int rc = onda_compile_expr(lexer, env, cobj);
     if (rc != 0)
       return rc;
   }
   return -1; // should never reach
 }
 
-static int onda_compile_if(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
+static int onda_compile_if(onda_lexer_t* lexer,
+                           onda_env_t* env,
+                           onda_code_obj_t* cobj) {
   int rc;
-  rc = onda_compile_until_ident(lexer, cobj, "then", 4, NULL, 0);
+  rc = onda_compile_until_ident(lexer, env, cobj, "then", 4, NULL, 0);
   if (rc < 0)
     return rc;
 
@@ -351,7 +356,7 @@ static int onda_compile_if(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   size_t condition_jmp_pc = cobj->size;
   CODE_PUSH_BYTES(&(int16_t){0},
                   sizeof(int16_t)); // placeholder for jump offset
-  rc = onda_compile_until_ident(lexer, cobj, "else", 4, "end", 3);
+  rc = onda_compile_until_ident(lexer, env, cobj, "else", 4, "end", 3);
   if (rc < 0)
     return rc;
 
@@ -371,7 +376,7 @@ static int onda_compile_if(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
 
   // If we ended on "else", we need to compile the else block too
   if (rc == 0) {
-    rc = onda_compile_until_ident(lexer, cobj, "end", 3, NULL, 0);
+    rc = onda_compile_until_ident(lexer, env, cobj, "end", 3, NULL, 0);
     if (rc < 0)
       return rc;
 
@@ -384,11 +389,13 @@ static int onda_compile_if(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   return 0;
 }
 
-static int onda_compile_while(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
+static int onda_compile_while(onda_lexer_t* lexer,
+                              onda_env_t* env,
+                              onda_code_obj_t* cobj) {
   const int32_t prev_loop_start_pc = cobj->inner_loop_start_pc;
   size_t loop_start_pc = cobj->size;
   cobj->inner_loop_start_pc = (int32_t)loop_start_pc;
-  int rc = onda_compile_until_ident(lexer, cobj, "do", 2, NULL, 0);
+  int rc = onda_compile_until_ident(lexer, env, cobj, "do", 2, NULL, 0);
   if (rc < 0)
     return rc;
 
@@ -397,7 +404,7 @@ static int onda_compile_while(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   CODE_PUSH_BYTES(&(int16_t){0},
                   sizeof(int16_t)); // placeholder for jump offset
 
-  rc = onda_compile_until_ident(lexer, cobj, "end", 3, NULL, 0);
+  rc = onda_compile_until_ident(lexer, env, cobj, "end", 3, NULL, 0);
   if (rc < 0)
     return rc;
 
@@ -446,7 +453,9 @@ static char* read_file(const char* filepath, size_t* out_size) {
 }
 
 static int onda_compile_store_local(onda_lexer_t* lexer,
+                                    onda_env_t* env,
                                     onda_code_obj_t* cobj) {
+  (void)env; // unused arg
   onda_token_t tok;
   onda_token_next(lexer, &tok);
   if (tok.type != TOKEN_IDENTIFIER) {
@@ -463,7 +472,9 @@ static int onda_compile_store_local(onda_lexer_t* lexer,
   return 0;
 }
 
-static int onda_compile_import(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
+static int onda_compile_import(onda_lexer_t* lexer,
+                               onda_env_t* env,
+                               onda_code_obj_t* cobj) {
   onda_token_t tok;
   char path[128];
   onda_token_next(lexer, &tok);
@@ -480,10 +491,13 @@ static int onda_compile_import(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   memcpy(path, tok.start, (size_t)tok.len);
   path[tok.len] = '\0';
 
-  return onda_compile_file(path, lexer, cobj);
+  return onda_compile_file(path, lexer, env, cobj);
 }
 
-static int onda_compile_continue(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
+static int onda_compile_continue(onda_lexer_t* lexer,
+                                 onda_env_t* env,
+                                 onda_code_obj_t* cobj) {
+  (void)env; // unused arg
   if (cobj->inner_loop_start_pc == -1) {
     print_err(lexer, "'continue' word used outside of a loop");
     return -1;
@@ -497,7 +511,9 @@ static int onda_compile_continue(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   return 0;
 }
 
-typedef int (*imm_word_handler_t)(onda_lexer_t* lexer, onda_code_obj_t* cobj);
+typedef int (*imm_word_handler_t)(onda_lexer_t* lexer,
+                                  onda_env_t* env,
+                                  onda_code_obj_t* cobj);
 
 typedef struct {
   const char* name;
@@ -549,7 +565,9 @@ static const onda_imm_word_t imm_words[] = {
 };
 static const size_t num_imm_words = sizeof(imm_words) / sizeof(imm_words[0]);
 
-static int onda_compile_word(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
+static int onda_compile_word(onda_lexer_t* lexer,
+                             onda_env_t* env,
+                             onda_code_obj_t* cobj) {
   onda_word_t word = {0};
   onda_token_t tok;
   onda_token_next(lexer, &tok);
@@ -657,7 +675,7 @@ static int onda_compile_word(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
                 tok.start);
       return -1;
     }
-    int rc = onda_compile_expr(lexer, cobj);
+    int rc = onda_compile_expr(lexer, env, cobj);
     if (rc != 0)
       return rc;
   } while (true);
@@ -667,14 +685,16 @@ static int onda_compile_word(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   return 0;
 }
 
-static int onda_compile_expr(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
+static int onda_compile_expr(onda_lexer_t* lexer,
+                             onda_env_t* env,
+                             onda_code_obj_t* cobj) {
 
   onda_token_t tok;
   onda_token_next(lexer, &tok);
 
   switch (tok.type) {
   case TOKEN_COLON:
-    return onda_compile_word(lexer, cobj);
+    return onda_compile_word(lexer, env, cobj);
     break;
   case TOKEN_IDENTIFIER:
     // Is it an immediate word
@@ -683,7 +703,7 @@ static int onda_compile_expr(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
           strncmp(imm_words[i].name, tok.start, (size_t)tok.len) != 0)
         continue;
       if (imm_words[i].handler) {
-        return imm_words[i].handler(lexer, cobj);
+        return imm_words[i].handler(lexer, env, cobj);
       } else {
         CODE_PUSH_BYTE(imm_words[i].opcode);
         return 0;
@@ -753,11 +773,13 @@ static int onda_compile_expr(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   return 0;
 }
 
-int onda_compile(onda_lexer_t* lexer, onda_code_obj_t* code_obj) {
+int onda_compile(onda_lexer_t* lexer,
+                 onda_env_t* env,
+                 onda_code_obj_t* code_obj) {
   while (true) {
     if (at_end(lexer))
       break;
-    int rc = onda_compile_expr(lexer, code_obj);
+    int rc = onda_compile_expr(lexer, env, code_obj);
     if (rc != 0)
       return rc;
   }
@@ -766,6 +788,7 @@ int onda_compile(onda_lexer_t* lexer, onda_code_obj_t* code_obj) {
 
 int onda_compile_file(const char* filepath,
                       onda_lexer_t* lexer,
+                      onda_env_t* env,
                       onda_code_obj_t* cobj) {
   char filename[ONDA_MAX_FILENAME_LEN];
   char resolved_path[ONDA_MAX_FILEPATH_LEN];
@@ -823,7 +846,7 @@ int onda_compile_file(const char* filepath,
   lexer->pos = 0;
   lexer->line = 0;
   lexer->column = 0;
-  int rc = onda_compile(lexer, cobj);
+  int rc = onda_compile(lexer, env, cobj);
   if (rc != 0) {
     print_err(lexer, "Compilation error in imported file: %s\n", resolved_path);
     return -1;

@@ -3,6 +3,7 @@
 
 #include "onda_config.h"
 #include "onda_dict.h"
+#include "onda_env.h"
 #include "onda_vm.h"
 
 #include <stddef.h>
@@ -74,7 +75,7 @@ typedef struct {
   // Current scope for resolving local variables. Initially NULL.
   onda_scope_t* current_scope;
   // Native functions callable from the bytecode.
-  onda_native_table_t native_funcs;
+  onda_native_registry_t native_funcs;
   // Tracks innermost loop start pc for handling continue statements.
   // Its equal to -1 if not in a loop.
   int32_t inner_loop_start_pc;
@@ -90,11 +91,12 @@ int onda_code_obj_init(onda_code_obj_t* cobj, size_t initial_capacity);
 void onda_code_obj_free(onda_code_obj_t* cobj);
 
 // Parse source code into bytecode buffer and set entry point if present
-int onda_compile(onda_lexer_t* lexer, onda_code_obj_t* code_obj);
+int onda_compile(onda_lexer_t* lexer, onda_env_t* env, onda_code_obj_t* code_obj);
 
 // Parse source code from file into bytecode buffer and set entry point
 int onda_compile_file(const char* filepath,
                       onda_lexer_t* lexer,
+                      onda_env_t* env,
                       onda_code_obj_t* code_obj);
 
 #endif // ONDA_COMPILER_H

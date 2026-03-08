@@ -16,17 +16,19 @@ int main(int argc, char* argv[]) {
   }
   onda_lexer_t lexer = {0};
   onda_code_obj_t cobj = {0};
+  onda_env_t env;
+  onda_env_init(&env);
   onda_code_obj_init(&cobj, CODE_BUF_SIZE);
-  if (onda_compile_file(argv[1], &lexer, &cobj) != 0) {
+  if (onda_compile_file(argv[1], &lexer, &env, &cobj) != 0) {
     fprintf(stderr, "Failed to parse source file: %s\n", argv[1]);
     return 1;
   }
 
   // Execute program in VM, starting from entry_pc
   onda_vm_t* vm = onda_vm_new();
-  vm->debug_mode = true;
   onda_vm_load_code(vm, cobj.code, cobj.entry_pc, cobj.size);
   printf("Executing with VM:\n");
+  vm->debug_mode = true;
   clock_gettime(CLOCK_MONOTONIC, &start);
   onda_vm_run(vm);
   clock_gettime(CLOCK_MONOTONIC, &end);
@@ -65,6 +67,7 @@ int main(int argc, char* argv[]) {
              (end.tv_nsec - start.tv_nsec) / 1000000.0);
 #endif // ONDA_CAN_JIT
 
+  onda_code_obj_free(&cobj);
   onda_vm_free(vm);
   return 0;
 }
