@@ -1,4 +1,6 @@
 - make c function call work in VM
+- onda_state_t stores data stack, frame stack, constants, C function table, maybe code+entry_pc
+  and it is shared between VM and JIT.
 - call c functions:
     - function callback manipulates data stack
     - do not use sp in jit use separate buffer for data stack
