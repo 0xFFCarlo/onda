@@ -558,10 +558,6 @@ static const onda_imm_word_t imm_words[] = {
     {"while", .handler = onda_compile_while},
     {"continue", .handler = onda_compile_continue},
     {"import", .handler = onda_compile_import},
-    {"print", ONDA_OP_PRINT, .handler = NULL},
-    {"prints", ONDA_OP_PRINT_STR, .handler = NULL},
-    {"malloc", ONDA_OP_MALLOC, .handler = NULL},
-    {"free", ONDA_OP_FREE, .handler = NULL},
 };
 static const size_t num_imm_words = sizeof(imm_words) / sizeof(imm_words[0]);
 
@@ -725,7 +721,7 @@ static int onda_compile_expr(onda_lexer_t* lexer,
       return 0;
     }
 
-    // Is it a local variable
+    // Is it a local variable?
     uint8_t local_id;
     if (onda_scope_get(cobj, tok.start, tok.len, &local_id) == 0) {
       CODE_PUSH_BYTE(ONDA_OP_PUSH_LOCAL);
@@ -733,7 +729,18 @@ static int onda_compile_expr(onda_lexer_t* lexer,
       return 0;
     }
 
-    // TODO: Is it a C function call?
+    // Is it a native function call?
+    uint64_t func_id;
+    if (onda_dict_get(&env->native_registry.items_map,
+                      tok.start,
+                      tok.len,
+                      &func_id) == 0) {
+      CODE_PUSH_BYTE(ONDA_OP_CALL_NATIVE);
+      uint64_t func =
+          (uint64_t)(uintptr_t)env->native_registry.items[func_id].fn;
+      CODE_PUSH_BYTES(&func, sizeof(uint64_t));
+      return 0;
+    }
 
     print_err(lexer, "Unknown identifier '%.*s'\n", tok.len, tok.start);
     return -1; // unknown identifier

@@ -1,5 +1,6 @@
 #include "../src/onda_compiler.h"
 #include "../src/onda_jit.h"
+#include "../src/onda_std.h"
 #include "../src/onda_vm.h"
 
 #include <stddef.h>
@@ -227,7 +228,7 @@ static const test_case_t tests[] = {
 };
 
 int main() {
-  onda_lexer_t lexer;
+  onda_lexer_t lexer = {0};
   onda_env_t env;
   onda_code_obj_t cobj = {0};
   size_t i;
@@ -235,7 +236,9 @@ int main() {
   uint8_t* machine_code = NULL;
   size_t machine_code_size = 0;
   int64_t frame_stack[ONDA_FRAME_STACK_SIZE];
+  int64_t data_stack[ONDA_DATA_STACK_SIZE];
   onda_env_init(&env);
+  onda_env_register_std(&env);
 
   // Run tests using VM
   printf("Testing with VM:\n");
@@ -256,16 +259,17 @@ int main() {
     onda_vm_load_code(vm, cobj.code, cobj.entry_pc, cobj.size);
     vm->debug_mode = tc->debug_mode;
     onda_vm_run(vm);
-    if (vm->sp != tc->stack_size) {
+    const size_t stack_size = vm->data_stack + ONDA_DATA_STACK_SIZE - vm->sp;
+    if (stack_size != tc->stack_size) {
       fprintf(stderr,
               "Test %zu failed: expected stack size %zu, got %zu\n",
               i,
               tc->stack_size,
-              vm->sp);
+              stack_size);
       goto failed;
     }
     if (tc->stack_size > 0) {
-      int64_t val = vm->data_stack[vm->sp - 1];
+      int64_t val = *vm->sp;
       if (val != tc->expected_result_a) {
         fprintf(stderr,
                 "Test %zu failed: expected TOS %llu, got %llu\n",
@@ -276,7 +280,7 @@ int main() {
       }
     }
     if (tc->stack_size > 1) {
-      int64_t val = vm->data_stack[vm->sp - 2];
+      int64_t val = *(vm->sp + 1);
       if (val != tc->expected_result_b) {
         fprintf(stderr,
                 "Test %zu failed: expected TOS-1 %llu, got %llu\n",
@@ -311,9 +315,11 @@ int main() {
     }
     // JIT test
     int64_t* frame_bp = frame_stack + ONDA_FRAME_STACK_SIZE;
+    int64_t* data_sp = data_stack + ONDA_DATA_STACK_SIZE;
     onda_jit_compile(cobj.code,
                      cobj.entry_pc,
                      cobj.size,
+                     data_sp,
                      frame_bp,
                      &machine_code,
                      &machine_code_size);

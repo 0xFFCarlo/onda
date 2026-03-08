@@ -10,17 +10,16 @@
 #include <stdio.h>
 #include <string.h>
 
+#define DS_REG                  19 // x19 used as data stack pointer (DS)
+#define FS_REG                  20 // x20 used as frame stack pointer (FS)
 #define ONDA_MCODE_INIT_CAP     512
 #define ONDA_MAX_OP_INSTR_COUNT 6 // max instructions per opcode
 
-#define AA64_SAVE_SP_X20    (0x910003F4)     // mov x20, sp
-#define AA64_RESTORE_SP_X20 (0x9100029F)     // mov sp, x20
-#define AA64_RESTORE_LR_x19 (0xAA1303FE)     // mov x30, x19
-#define AA64_PUSH_X0_STACK  (0xF81F0FE0)     // str x0, [sp, #-16]!
-#define AA64_POP_STACK(x)   (0xF84107E0 | x) // ldr xX, [sp], #16
-#define AA64_STORE_X0_STACK (0xF90003E0)     // str x0, [sp]
-#define AA64_LOAD_STACK(x)  (0xF94003E0 | x) // ldr xX, [sp]
-#define AA64_BLR_X16        (0xD63F0200)     // blr x16
+#define AA64_PUSH_X0_STACK  (0xF81F8E60u)            // str x0, [x19, #-8]!
+#define AA64_POP_STACK(x)   (0xF8408660u | ((x)&31)) // ldr xN, [x19], #8
+#define AA64_STORE_X0_STACK 0xF9000260u              // str x0, [x19]
+#define AA64_LOAD_STACK(x)  (0xF9400260u | ((x)&31)) // ldr xN, [x19]
+#define AA64_BLR(reg)       (0xD63F0000u | (((reg)&31u) << 5)) // blr xN
 #define AA64_B(imm26)       (0x14000000u | ((uint32_t)(imm26)&0x03FFFFFFu))
 #define AA64_CBZ(reg, imm19)                                                   \
   (0xB4000000u | ((((uint32_t)(imm19)) & 0x7FFFFu) << 5) | ((reg)&31u))
@@ -104,6 +103,7 @@ typedef struct onda_unresolved_jump_t {
 size_t onda_jit_aarch64(const uint8_t* bytecode,
                         const size_t bytecode_entry_pc,
                         size_t bytecode_size,
+                        int64_t* data_sp,
                         int64_t* frame_bp,
                         uint8_t** out_machine_code,
                         size_t* out_machine_code_size) {
@@ -139,18 +139,25 @@ size_t onda_jit_aarch64(const uint8_t* bytecode,
     EMIT(op_placeholder);                                                      \
   }
 
-  // Prologue: save sp, lr and load frame_bp
-  EMIT(AA64_SAVE_SP_X20);
-  // x21 = immediate(frame_bp - 2)
+  // Prologue
+  // x20 = immediate(frame_bp - 2)
   {
     const uint64_t fb = (uint64_t)(uintptr_t)(frame_bp - 2);
-    EMIT(AA64_MOVZ(21, (fb >> 0) & 0xFFFF, 0));
-    EMIT(AA64_MOVK(21, (fb >> 16) & 0xFFFF, 16));
-    EMIT(AA64_MOVK(21, (fb >> 32) & 0xFFFF, 32));
-    EMIT(AA64_MOVK(21, (fb >> 48) & 0xFFFF, 48));
+    EMIT(AA64_MOVZ(FS_REG, (fb >> 0) & 0xFFFF, 0));
+    EMIT(AA64_MOVK(FS_REG, (fb >> 16) & 0xFFFF, 16));
+    EMIT(AA64_MOVK(FS_REG, (fb >> 32) & 0xFFFF, 32));
+    EMIT(AA64_MOVK(FS_REG, (fb >> 48) & 0xFFFF, 48));
   }
-  EMIT(AA64_STRU(30, 21, 0)); // x30 (lr) -> frame[0] = return address
-  EMIT(AA64_STRU(31, 21, 8)); // xzr -> frame[1] = 0
+  // x19 = data stack pointer
+  {
+    const uint64_t dsp = (uint64_t)(uintptr_t)data_sp;
+    EMIT(AA64_MOVZ(DS_REG, (dsp >> 0) & 0xFFFF, 0));
+    EMIT(AA64_MOVK(DS_REG, (dsp >> 16) & 0xFFFF, 16));
+    EMIT(AA64_MOVK(DS_REG, (dsp >> 32) & 0xFFFF, 32));
+    EMIT(AA64_MOVK(DS_REG, (dsp >> 48) & 0xFFFF, 48));
+  }
+  EMIT(AA64_STRU(30, FS_REG, 0)); // x30 (lr) -> frame[0] = return address
+  EMIT(AA64_STRU(31, FS_REG, 8)); // xzr -> frame[1] = 0
 
   // Jump to start of program
   if (bytecode_entry_pc > 0)
@@ -225,47 +232,47 @@ size_t onda_jit_aarch64(const uint8_t* bytecode,
     } break;
     case ONDA_OP_PUSH_LOCAL: {
       const uint8_t local_id = bytecode[bcode_pos++];
-      EMIT2(AA64_PUSH_X0_STACK, AA64_LDRU(0, 21, local_id * 8));
+      EMIT2(AA64_PUSH_X0_STACK, AA64_LDRU(0, FS_REG, local_id * 8));
     } break;
     case ONDA_OP_STORE_LOCAL: {
       const uint8_t local_id = bytecode[bcode_pos++];
-      EMIT2(AA64_STRU(0, 21, local_id * 8), AA64_POP_STACK(0));
+      EMIT2(AA64_STRU(0, FS_REG, local_id * 8), AA64_POP_STACK(0));
     } break;
     case ONDA_OP_PUSH_FROM_ADDR_B:
       EMIT(AA64_LDRBU(0, 0, 0)); // x0 = *(uint8_t*)x0
       break;
     case ONDA_OP_STORE_TO_ADDR_B:
-      EMIT(AA64_LDRBU(7, 31, 0));  // x7 = value from [sp]
-      EMIT(AA64_STRBU(7, 0, 0));   // *(uint8_t*)x0 = x7
-      EMIT(AA64_LDRU(0, 31, 16));  // x0 = next item below value
-      EMIT(AA64_ADDI(31, 31, 32)); // sp += 32
+      EMIT(AA64_LDRBU(7, DS_REG, 0));      // x7 = value from [ds]
+      EMIT(AA64_STRBU(7, 0, 0));           // *(uint8_t*)x0 = x7
+      EMIT(AA64_LDRU(0, DS_REG, 8));       // x0 = next item below value
+      EMIT(AA64_ADDI(DS_REG, DS_REG, 16)); // ds += 16
       break;
     case ONDA_OP_PUSH_FROM_ADDR_HW:
       EMIT(AA64_LDRHU(0, 0, 0)); // x0 = *(uint16_t*)x0
       break;
     case ONDA_OP_STORE_TO_ADDR_HW:
-      EMIT(AA64_LDRHU(7, 31, 0));  // x7 = value from [sp]
-      EMIT(AA64_STRHU(7, 0, 0));   // *(uint16_t*)x0 = x7
-      EMIT(AA64_LDRU(0, 31, 16));  // x0 = next item below value
-      EMIT(AA64_ADDI(31, 31, 32)); // sp += 32
+      EMIT(AA64_LDRHU(7, DS_REG, 0));      // x7 = value from [ds]
+      EMIT(AA64_STRHU(7, 0, 0));           // *(uint16_t*)x0 = x7
+      EMIT(AA64_LDRU(0, DS_REG, 8));       // x0 = next item below value
+      EMIT(AA64_ADDI(DS_REG, DS_REG, 16)); // ds += 32
       break;
     case ONDA_OP_PUSH_FROM_ADDR_W:
       EMIT(AA64_LDRWU(0, 0, 0)); // x0 = *(uint32_t*)x0
       break;
     case ONDA_OP_STORE_TO_ADDR_W:
-      EMIT(AA64_LDRWU(7, 31, 0));  // x7 = value from [sp]
-      EMIT(AA64_STRWU(7, 0, 0));   // *(uint32_t*)x0 = x7
-      EMIT(AA64_LDRU(0, 31, 16));  // x0 = next item below value
-      EMIT(AA64_ADDI(31, 31, 32)); // sp += 32
+      EMIT(AA64_LDRWU(7, DS_REG, 0));      // x7 = value from [ds]
+      EMIT(AA64_STRWU(7, 0, 0));           // *(uint32_t*)x0 = x7
+      EMIT(AA64_LDRU(0, DS_REG, 8));       // x0 = next item below value
+      EMIT(AA64_ADDI(DS_REG, DS_REG, 16)); // ds += 32
       break;
     case ONDA_OP_PUSH_FROM_ADDR_DW:
       EMIT(AA64_LDRU(0, 0, 0)); // x0 = *(uint64_t*)x0
       break;
     case ONDA_OP_STORE_TO_ADDR_DW:
-      EMIT(AA64_LDRU(7, 31, 0));   // x7 = value from [sp]
-      EMIT(AA64_STRU(7, 0, 0));    // *(uint64_t*)x0 = x7
-      EMIT(AA64_LDRU(0, 31, 16));  // x0 = next item below value
-      EMIT(AA64_ADDI(31, 31, 32)); // sp += 32
+      EMIT(AA64_LDRU(7, DS_REG, 0));       // x7 = value from [ds]
+      EMIT(AA64_STRU(7, 0, 0));            // *(uint64_t*)x0 = x7
+      EMIT(AA64_LDRU(0, DS_REG, 8));       // x0 = next item below value
+      EMIT(AA64_ADDI(DS_REG, DS_REG, 16)); // ds += 32
       break;
     case ONDA_OP_ADD:
       EMIT2(AA64_POP_STACK(1), AA64_ADD(0, 1, 0));
@@ -328,8 +335,8 @@ size_t onda_jit_aarch64(const uint8_t* bytecode,
     case ONDA_OP_ROT: // (a b c -- c a b)
       EMIT(AA64_LOAD_STACK(1));
       EMIT(AA64_LOAD_STACK(2));
-      EMIT(0xF90007E0); // str x0, [sp, #8]
-      EMIT(0xF90003E2); // str x2, [sp, #0]
+      EMIT(AA64_STRU(0, DS_REG, 8)); // str x0, [ds, #8]
+      EMIT(AA64_STRU(2, DS_REG, 0)); // str x2, [ds, #0]
       EMIT(AA64_MOV(0, 1));
       break;
     case ONDA_OP_DROP:
@@ -363,37 +370,24 @@ size_t onda_jit_aarch64(const uint8_t* bytecode,
       }
       bcode_pos += 2;
     } break;
-    case ONDA_OP_PRINT: {
-      const uint64_t addr = (uint64_t)(uintptr_t)&onda_print_u64;
-      EMIT(AA64_MOVZ(16, (addr >> 0) & 0xFFFF, 0));
-      EMIT(AA64_MOVK(16, (addr >> 16) & 0xFFFF, 16));
-      EMIT(AA64_MOVK(16, (addr >> 32) & 0xFFFF, 32));
-      EMIT(AA64_MOVK(16, (addr >> 48) & 0xFFFF, 48));
-      EMIT2(AA64_BLR_X16, AA64_POP_STACK(0));
-    } break;
-    case ONDA_OP_PRINT_STR: {
-      const uint64_t addr = (uint64_t)(uintptr_t)&onda_print_string;
-      EMIT(AA64_MOVZ(16, (addr >> 0) & 0xFFFF, 0));
-      EMIT(AA64_MOVK(16, (addr >> 16) & 0xFFFF, 16));
-      EMIT(AA64_MOVK(16, (addr >> 32) & 0xFFFF, 32));
-      EMIT(AA64_MOVK(16, (addr >> 48) & 0xFFFF, 48));
-      EMIT2(AA64_BLR_X16, AA64_POP_STACK(0));
-    } break;
-    case ONDA_OP_MALLOC: {
-      const uint64_t addr = (uint64_t)(uintptr_t)&onda_malloc;
-      EMIT(AA64_MOVZ(16, (addr >> 0) & 0xFFFF, 0));
-      EMIT(AA64_MOVK(16, (addr >> 16) & 0xFFFF, 16));
-      EMIT(AA64_MOVK(16, (addr >> 32) & 0xFFFF, 32));
-      EMIT(AA64_MOVK(16, (addr >> 48) & 0xFFFF, 48));
-      EMIT(AA64_BLR_X16);
-    } break;
-    case ONDA_OP_FREE: {
-      const uint64_t addr = (uint64_t)(uintptr_t)&onda_free;
-      EMIT(AA64_MOVZ(16, (addr >> 0) & 0xFFFF, 0));
-      EMIT(AA64_MOVK(16, (addr >> 16) & 0xFFFF, 16));
-      EMIT(AA64_MOVK(16, (addr >> 32) & 0xFFFF, 32));
-      EMIT(AA64_MOVK(16, (addr >> 48) & 0xFFFF, 48));
-      EMIT2(AA64_BLR_X16, AA64_POP_STACK(0));
+    case ONDA_OP_CALL_NATIVE: {
+      // push TOS to stack first to free x0
+      EMIT(AA64_PUSH_X0_STACK);
+      // put ds in x0 as argument to native function
+      EMIT(AA64_MOV(0, DS_REG));
+      // load native function address into x3 and call
+      uint64_t fn_addr;
+      memcpy(&fn_addr, &bytecode[bcode_pos], sizeof(onda_native_fn_cb_t));
+      bcode_pos += sizeof(uint64_t);
+      EMIT(AA64_MOVZ(3, (fn_addr >> 0) & 0xFFFF, 0));
+      EMIT(AA64_MOVK(3, (fn_addr >> 16) & 0xFFFF, 16));
+      EMIT(AA64_MOVK(3, (fn_addr >> 32) & 0xFFFF, 32));
+      EMIT(AA64_MOVK(3, (fn_addr >> 48) & 0xFFFF, 48));
+      EMIT(AA64_BLR(3));
+      // After return, x0 has the new ds, so restore it to ds
+      EMIT(AA64_MOV(DS_REG, 0)); // ds = x0
+      // Pop ToS to x0 as return value from CALL_NATIVE
+      EMIT(AA64_POP_STACK(0));
     } break;
     case ONDA_OP_CALL: {
       const uint8_t argc = bytecode[bcode_pos++];
@@ -401,17 +395,17 @@ size_t onda_jit_aarch64(const uint8_t* bytecode,
       int32_t branch_offset;
       memcpy(&branch_offset, &bytecode[bcode_pos], 4);
       bcode_pos += sizeof(int32_t);
-      // - x6 store x21 (frame_bp)
-      // - x21 make room for 2 + locals elements
+      // - x6 store x20 (frame_bp)
+      // - x20 make room for 2 + locals elements
       // - load arguments from data stack and store to frame stack
       // - pop arguments from data stack
-      // - x21[1] store x6 (prev frame_bp)
-      // - x21[0] store return address in bytes
+      // - x20[1] store x6 (prev frame_bp)
+      // - x20[0] store return address in bytes
       // - branch to function
-      EMIT(AA64_MOV(6, 21));
+      EMIT(AA64_MOV(6, FS_REG));
       const uint32_t frame_bytes = (uint32_t)(2u + locals) * 8u;
       if (frame_bytes <= 4095) {
-        EMIT(AA64_SUBI(21, 21, frame_bytes));
+        EMIT(AA64_SUBI(FS_REG, FS_REG, frame_bytes));
       } else {
         printf("Error: frame too large for SUBI immediate\n");
         return -1;
@@ -420,28 +414,28 @@ size_t onda_jit_aarch64(const uint8_t* bytecode,
       // Move arguments from data stack to frame stack
       for (int i = 0; i < argc; i++) {
         if (i == 0) { // TOS is in x0 already
-          EMIT(AA64_STRU(0, 21, (2 + argc - 1 - i) * 8));
+          EMIT(AA64_STRU(0, FS_REG, (2 + argc - 1 - i) * 8));
         } else {
           // load argument from data stack
-          EMIT(AA64_LDRU(7, 31, (i - 1) * 16));
+          EMIT(AA64_LDRU(7, DS_REG, (i - 1) * 8));
           // store argument to frame stack
-          EMIT(AA64_STRU(7, 21, (2 + argc - 1 - i) * 8));
+          EMIT(AA64_STRU(7, FS_REG, (2 + argc - 1 - i) * 8));
         }
       }
       // Pop arguments from data stack
       if (argc > 0) {
         // New TOS is the value below the removed args
-        const uint32_t new_tos_off = (uint32_t)(argc - 1u) * 16u;
-        const uint32_t pop_bytes = (uint32_t)argc * 16u;
+        const uint32_t new_tos_off = (uint32_t)(argc - 1u) * 8u;
+        const uint32_t pop_bytes = (uint32_t)argc * 8u;
 
-        EMIT(AA64_LDRU(0, 31, new_tos_off)); // x0 = new caller TOS
-        EMIT(AA64_ADDI(31, 31, pop_bytes));  // sp += argc * 16
+        EMIT(AA64_LDRU(0, DS_REG, new_tos_off));    // x0 = new caller TOS
+        EMIT(AA64_ADDI(DS_REG, DS_REG, pop_bytes)); // sp += argc * 16
       }
 
-      EMIT(AA64_STRU(6, 21, 1 * 8));
+      EMIT(AA64_STRU(6, FS_REG, 1 * 8));
       // address of next instruction after branch, in bytes
       EMIT(AA64_ADR(6, 3 * 4));
-      EMIT(AA64_STRU(6, 21, 0 * 8));
+      EMIT(AA64_STRU(6, FS_REG, 0 * 8));
       if (bcode_to_mcode[bcode_pos + branch_offset] == -1) {
         printf("Error: Unresolved jump for CALL at bytecode position %ld\n",
                bcode_pos);
@@ -455,21 +449,20 @@ size_t onda_jit_aarch64(const uint8_t* bytecode,
     }
     case ONDA_OP_RET:
       // x30 = frame[0] (return address)
-      EMIT(AA64_LDRU(30, 21, 0));
+      EMIT(AA64_LDRU(30, FS_REG, 0));
 
       // x6 = frame[1] (previous frame_bp)
-      EMIT(AA64_LDRU(6, 21, 8));
+      EMIT(AA64_LDRU(6, FS_REG, 8));
 
       // if x6 == 0, jump to root-return path
       // +3 instructions to skip over the normal nested return path
       EMIT(AA64_CBZ(6, 3));
 
       // normal nested return:
-      EMIT(AA64_MOV(21, 6));
+      EMIT(AA64_MOV(FS_REG, 6));
       EMIT(AA64_RET);
 
       // root return to C which restores SP:
-      EMIT(AA64_RESTORE_SP_X20); // mov sp, x20
       EMIT(AA64_RET);
       break;
     default:

@@ -1,9 +1,8 @@
 #ifndef ONDA_STD_H
 #define ONDA_STD_H
 
-#include <stdint.h>
+#include "onda_env.h"
 
-void onda_print_u64(uint64_t x);
-void onda_print_string(const char* str);
+int onda_env_register_std(onda_env_t* env);
 
 #endif // ONDA_STD_H

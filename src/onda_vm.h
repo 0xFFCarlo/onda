@@ -53,11 +53,7 @@ typedef enum onda_op_type {
   ONDA_OP_OVER,
   ONDA_OP_ROT,
   ONDA_OP_DROP,
-  // I/O Operations
-  ONDA_OP_PRINT,
-  ONDA_OP_PRINT_STR,
-  ONDA_OP_MALLOC,
-  ONDA_OP_FREE,
+
   ONDA_OP_COUNT,
 } onda_op_type_t;
 
@@ -67,7 +63,7 @@ typedef struct onda_vm {
   size_t entry_pc;
   int64_t data_stack[ONDA_DATA_STACK_SIZE];
   int64_t frame_stack[ONDA_FRAME_STACK_SIZE];
-  size_t sp;
+  int64_t* sp;
   bool debug_mode;
 } onda_vm_t;
 

@@ -1,6 +1,7 @@
 #include "onda_compiler.h"
 #include "onda_config.h"
 #include "onda_jit.h"
+#include "onda_std.h"
 #include "onda_vm.h"
 
 #include <stdio.h>
@@ -18,6 +19,7 @@ int main(int argc, char* argv[]) {
   onda_code_obj_t cobj = {0};
   onda_env_t env;
   onda_env_init(&env);
+  onda_env_register_std(&env);
   onda_code_obj_init(&cobj, CODE_BUF_SIZE);
   if (onda_compile_file(argv[1], &lexer, &env, &cobj) != 0) {
     fprintf(stderr, "Failed to parse source file: %s\n", argv[1]);
@@ -32,8 +34,8 @@ int main(int argc, char* argv[]) {
   clock_gettime(CLOCK_MONOTONIC, &start);
   onda_vm_run(vm);
   clock_gettime(CLOCK_MONOTONIC, &end);
-  if (vm->sp > 0) {
-    uint64_t tos = vm->data_stack[vm->sp - 1];
+  if (vm->sp < vm->data_stack + ONDA_DATA_STACK_SIZE) {
+    uint64_t tos = *vm->sp;
     printf("VM execution result (TOS): %llu\n", tos);
   } else {
     printf("VM stack is empty after execution.\n");
@@ -48,10 +50,13 @@ int main(int argc, char* argv[]) {
   uint8_t* machine_code = NULL;
   size_t machine_code_size = 0;
   int64_t frame_stack[ONDA_FRAME_STACK_SIZE];
+  int64_t data_stack[ONDA_DATA_STACK_SIZE];
   int64_t* frame_bp = frame_stack + ONDA_FRAME_STACK_SIZE;
+  int64_t* data_sp = data_stack + ONDA_DATA_STACK_SIZE;
   onda_jit_compile(cobj.code,
                    cobj.entry_pc,
                    cobj.size,
+                   data_sp,
                    frame_bp,
                    &machine_code,
                    &machine_code_size);
