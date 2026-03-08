@@ -26,25 +26,6 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  // Execute program in VM, starting from entry_pc
-  onda_vm_t* vm = onda_vm_new();
-  onda_vm_load_code(vm, cobj.code, cobj.entry_pc, cobj.size);
-  printf("Executing with VM:\n");
-  vm->debug_mode = true;
-  clock_gettime(CLOCK_MONOTONIC, &start);
-  onda_vm_run(vm);
-  clock_gettime(CLOCK_MONOTONIC, &end);
-  if (vm->sp < vm->data_stack + ONDA_DATA_STACK_SIZE) {
-    uint64_t tos = *vm->sp;
-    printf("VM execution result (TOS): %llu\n", tos);
-  } else {
-    printf("VM stack is empty after execution.\n");
-  }
-  printf("VM execution time: %.3f ms\n",
-         (end.tv_sec - start.tv_sec) * 1000.0 +
-             (end.tv_nsec - start.tv_nsec) / 1000000.0);
-  printf("\n");
-
 #ifdef ONDA_CAN_JIT
   // Compile to machine code
   uint8_t* machine_code = NULL;
@@ -62,17 +43,36 @@ int main(int argc, char* argv[]) {
                    &machine_code_size);
 
   // Execute program in JIT
-  printf("Executing with JIT:\n");
   clock_gettime(CLOCK_MONOTONIC, &start);
   uint64_t tos = onda_jit_run(machine_code, machine_code_size);
   clock_gettime(CLOCK_MONOTONIC, &end);
-  printf("JIT execution result (TOS): %llu\n", tos);
-  printf("JIT execution time: %.3f ms\n",
+  printf("Execution result (TOS): %llu\n", tos);
+  printf("Execution time: %.3f ms\n",
          (end.tv_sec - start.tv_sec) * 1000.0 +
              (end.tv_nsec - start.tv_nsec) / 1000000.0);
+#else
+  // Execute program in VM, starting from entry_pc
+  onda_vm_t* vm = onda_vm_new();
+  onda_vm_load_code(vm, cobj.code, cobj.entry_pc, cobj.size);
+  printf("Executing with VM:\n");
+  vm->debug_mode = true;
+  clock_gettime(CLOCK_MONOTONIC, &start);
+  onda_vm_run(vm);
+  clock_gettime(CLOCK_MONOTONIC, &end);
+  if (vm->sp < vm->data_stack + ONDA_DATA_STACK_SIZE) {
+    uint64_t tos = *vm->sp;
+    printf("Execution result (TOS): %llu\n", tos);
+  } else {
+    printf("Stack is empty after execution.\n");
+  }
+  printf("Execution time: %.3f ms\n",
+         (end.tv_sec - start.tv_sec) * 1000.0 +
+             (end.tv_nsec - start.tv_nsec) / 1000000.0);
+  printf("\n");
+  onda_vm_free(vm);
 #endif // ONDA_CAN_JIT
 
+  onda_env_free(&env);
   onda_code_obj_free(&cobj);
-  onda_vm_free(vm);
   return 0;
 }
