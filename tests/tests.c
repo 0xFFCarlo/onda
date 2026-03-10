@@ -3,6 +3,7 @@
 #include "../src/onda_std.h"
 #include "../src/onda_vm.h"
 
+#include <inttypes.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -223,7 +224,37 @@ static const test_case_t tests[] = {
      ": main 16 malloc test ;",
      2,
      0,
-     44}
+     44},
+
+    //===================
+    // Large constants (exercise PUSH_CONST_U32 / PUSH_CONST_U64 paths)
+    //===================
+    // U32: value > 255
+    {"65536 ret", 1, 65536},
+    // U32: 0xFFFFFFFF (max 32-bit)
+    {"4294967295 ret", 1, 4294967295LL},
+    // U64: value > 0xFFFFFFFF
+    {"4294967296 ret", 1, 4294967296LL},
+
+    //===================
+    // Signed comparisons with negative numbers
+    //===================
+    // -1 < 0 must be true (catches unsigned-vs-signed comparison bug)
+    {"0 1 - 0 < ret", 1, 1},
+    // -1 > 0 must be false
+    {"0 1 - 0 > ret", 1, 0},
+    // -1 <= -1 must be true
+    {"0 1 - 0 1 - <= ret", 1, 1},
+
+    //===================
+    // Arithmetic edge cases
+    //===================
+    // MOD yielding zero
+    {"6 3 % ret", 1, 0},
+    // DIV of zero
+    {"0 5 / ret", 1, 0},
+    // Chained: (2 + 3) * 4 = 20
+    {"2 3 + 4 * ret", 1, 20},
 
 };
 
@@ -272,7 +303,7 @@ int main() {
       int64_t val = *vm->sp;
       if (val != tc->expected_result_a) {
         fprintf(stderr,
-                "Test %zu failed: expected TOS %llu, got %llu\n",
+                "Test %zu failed: expected TOS %" PRId64 ", got %" PRId64 "\n",
                 i,
                 tc->expected_result_a,
                 val);
@@ -283,7 +314,7 @@ int main() {
       int64_t val = *(vm->sp + 1);
       if (val != tc->expected_result_b) {
         fprintf(stderr,
-                "Test %zu failed: expected TOS-1 %llu, got %llu\n",
+                "Test %zu failed: expected TOS-1 %" PRId64 ", got %" PRId64 "\n",
                 i,
                 tc->expected_result_b,
                 val);
@@ -327,7 +358,7 @@ int main() {
     if (tc->stack_size > 0) {
       if (tos != tc->expected_result_a) {
         fprintf(stderr,
-                "Test %zu JIT failed: expected TOS %llu, got %llu\n",
+                "Test %zu JIT failed: expected TOS %" PRId64 ", got %" PRIu64 "\n",
                 i,
                 tc->expected_result_a,
                 tos);

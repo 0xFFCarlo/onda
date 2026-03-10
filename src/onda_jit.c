@@ -2,6 +2,9 @@
 #if defined(__aarch64__)
 #include "onda_jit_aarch64.h"
 #endif
+#if defined(__x86_64__)
+#include "onda_jit_x86_64.h"
+#endif
 
 #include <errno.h>
 #include <pthread.h>
@@ -84,7 +87,15 @@ int onda_jit_compile(const uint8_t* bytecode,
                           frame_bp,
                           out_machine_code,
                           out_machine_code_size);
+#elif defined(__x86_64__)
+  return onda_jit_x86_64(bytecode,
+                         bytecode_entry_pc,
+                         bytecode_size,
+                         data_sp,
+                         frame_bp,
+                         out_machine_code,
+                         out_machine_code_size);
 #else
   return -1; // JIT compilation not supported on this platform
-#endif // __aarch64__
+#endif
 }

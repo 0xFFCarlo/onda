@@ -1,7 +1,7 @@
 #ifndef ONDA_CONFIG_H
 #define ONDA_CONFIG_H
 
-#if defined(__aarch64__)
+#if defined(__aarch64__) || defined(__x86_64__)
 #define ONDA_CAN_JIT
 #endif
 

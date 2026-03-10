@@ -1,5 +1,6 @@
 #include "onda_std.h"
 
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,19 +8,19 @@
 
 static int64_t* onda_print_u64(int64_t* sp) {
   uint64_t x = (uint64_t)(*sp);
-  printf("%llu\n", x);
+  printf("%" PRIu64 "\n", x);
   return sp + 1;
 }
 
 static int64_t* onda_print_i64(int64_t* sp) {
   int64_t x = *sp;
-  printf("%lld\n", x);
+  printf("%" PRId64 "\n", x);
   return sp + 1;
 }
 
 static int64_t* onda_print_hex(int64_t* sp) {
   uint64_t x = (uint64_t)(*sp);
-  printf("0x%llx\n", x);
+  printf("0x%" PRIx64 "\n", x);
   return sp + 1;
 }
 

@@ -4,6 +4,7 @@
 #include "onda_std.h"
 #include "onda_vm.h"
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <time.h>
 
@@ -46,7 +47,7 @@ int main(int argc, char* argv[]) {
   clock_gettime(CLOCK_MONOTONIC, &start);
   uint64_t tos = onda_jit_run(machine_code, machine_code_size);
   clock_gettime(CLOCK_MONOTONIC, &end);
-  printf("Execution result (TOS): %llu\n", tos);
+  printf("Execution result (TOS): %" PRIu64 "\n", tos);
   printf("Execution time: %.3f ms\n",
          (end.tv_sec - start.tv_sec) * 1000.0 +
              (end.tv_nsec - start.tv_nsec) / 1000000.0);
@@ -61,7 +62,7 @@ int main(int argc, char* argv[]) {
   clock_gettime(CLOCK_MONOTONIC, &end);
   if (vm->sp < vm->data_stack + ONDA_DATA_STACK_SIZE) {
     uint64_t tos = *vm->sp;
-    printf("Execution result (TOS): %llu\n", tos);
+    printf("Execution result (TOS): %" PRIu64 "\n", tos);
   } else {
     printf("Stack is empty after execution.\n");
   }
