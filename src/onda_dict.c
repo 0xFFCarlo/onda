@@ -64,7 +64,7 @@ static void _onda_dict_put(onda_dict_t* d,
       return;
     }
 
-    if (memcmp(s->key, key, key_len) == 0 && s->key_len == key_len) {
+    if (s->key_len == key_len && memcmp(s->key, key, key_len) == 0) {
       s->value = value; // optional overwrite
       return;
     }
@@ -107,7 +107,7 @@ int onda_dict_get(onda_dict_t* d,
     if (!s->key)
       return 1;
 
-    if (memcmp(s->key, key, key_len) == 0 && s->key_len == key_len) {
+    if (s->key_len == key_len && memcmp(s->key, key, key_len) == 0) {
       *out = s->value;
       return 0;
     }

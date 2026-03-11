@@ -166,6 +166,13 @@ static inline void tok1(onda_lexer_t* l, onda_token_t* t, int type) {
   advance(l);
 }
 
+static inline bool tok_is_ident(const onda_token_t* tok,
+                                const char* ident,
+                                size_t ident_len) {
+  return tok->type == TOKEN_IDENTIFIER && tok->len == ident_len &&
+         strncmp(tok->start, ident, ident_len) == 0;
+}
+
 void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
   if (at_end(lexer)) {
     t->type = TOKEN_EOF;
@@ -226,9 +233,8 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
 }
 
 static void onda_token_peek(onda_lexer_t* lexer, onda_token_t* t) {
-  size_t saved_pos = lexer->pos;
-  size_t saved_line = lexer->line;
-  size_t saved_column = lexer->column;
+  size_t saved_pos = lexer->pos, saved_line = lexer->line,
+         saved_column = lexer->column;
   onda_token_next(lexer, t);
   lexer->pos = saved_pos;
   lexer->line = saved_line;
@@ -325,23 +331,26 @@ static inline int onda_compile_until_ident(onda_lexer_t* lexer,
   onda_token_t tok;
   while (true) {
     onda_token_peek(lexer, &tok);
-    if (tok.type == TOKEN_IDENTIFIER) {
-      if (tok.len == ident_a_len &&
-          strncmp(tok.start, ident_a, ident_a_len) == 0) {
-        onda_token_next(lexer, &tok); // consume ident_a
-        return 0;
-      }
-      if (ident_b && tok.len == ident_b_len &&
-          strncmp(tok.start, ident_b, ident_b_len) == 0) {
-        onda_token_next(lexer, &tok); // consume ident_b
-        return 1;
-      }
+    if (tok_is_ident(&tok, ident_a, ident_a_len)) {
+      onda_token_next(lexer, &tok); // consume ident_a
+      return 0;
+    }
+    if (ident_b && tok_is_ident(&tok, ident_b, ident_b_len)) {
+      onda_token_next(lexer, &tok); // consume ident_b
+      return 1;
     }
     int rc = onda_compile_expr(lexer, env, cobj);
     if (rc != 0)
       return rc;
   }
   return -1; // should never reach
+}
+
+static inline void code_patch_rel_i16(onda_code_obj_t* cobj,
+                                      size_t from_pc,
+                                      size_t to_pc) {
+  const int16_t offset = (int16_t)(to_pc - from_pc);
+  memcpy(&cobj->code[from_pc], &offset, sizeof(offset));
 }
 
 static int onda_compile_if(onda_lexer_t* lexer,
@@ -370,9 +379,7 @@ static int onda_compile_if(onda_lexer_t* lexer,
   }
 
   // Patch the jump offset for the condition
-  size_t after_then_pc = cobj->size;
-  int16_t condition_jmp_offset = (int16_t)(after_then_pc - condition_jmp_pc);
-  memcpy(&cobj->code[condition_jmp_pc], &condition_jmp_offset, sizeof(int16_t));
+  code_patch_rel_i16(cobj, condition_jmp_pc, cobj->size);
 
   // If we ended on "else", we need to compile the else block too
   if (rc == 0) {
@@ -381,9 +388,7 @@ static int onda_compile_if(onda_lexer_t* lexer,
       return rc;
 
     // Patch the jump offset for the then block
-    size_t after_else_pc = cobj->size;
-    int16_t then_jmp_offset = (int16_t)(after_else_pc - then_jmp_pc);
-    memcpy(&cobj->code[then_jmp_pc], &then_jmp_offset, sizeof(int16_t));
+    code_patch_rel_i16(cobj, then_jmp_pc, cobj->size);
   }
 
   return 0;
@@ -415,9 +420,7 @@ static int onda_compile_while(onda_lexer_t* lexer,
   CODE_PUSH_BYTES(&loop_back_offset, sizeof(int16_t));
 
   // Patch the jump offset for the condition
-  size_t after_loop_pc = cobj->size;
-  int16_t condition_jmp_offset = (int16_t)(after_loop_pc - condition_jmp_pc);
-  memcpy(&cobj->code[condition_jmp_pc], &condition_jmp_offset, sizeof(int16_t));
+  code_patch_rel_i16(cobj, condition_jmp_pc, cobj->size);
 
   // Restore previous loop start for nested loops
   cobj->inner_loop_start_pc = prev_loop_start_pc;
@@ -561,6 +564,16 @@ static const onda_imm_word_t imm_words[] = {
 };
 static const size_t num_imm_words = sizeof(imm_words) / sizeof(imm_words[0]);
 
+static inline const onda_imm_word_t* find_imm_word(const char* name,
+                                                   size_t len) {
+  for (size_t i = 0; i < num_imm_words; i++) {
+    if (strlen(imm_words[i].name) == len &&
+        strncmp(imm_words[i].name, name, len) == 0)
+      return &imm_words[i];
+  }
+  return NULL;
+}
+
 static int onda_compile_word(onda_lexer_t* lexer,
                              onda_env_t* env,
                              onda_code_obj_t* cobj) {
@@ -581,15 +594,12 @@ static int onda_compile_word(onda_lexer_t* lexer,
   }
 
   // Check that word definition does not match any immediate word
-  for (size_t i = 0; i < num_imm_words; i++) {
-    if (strlen(imm_words[i].name) == (size_t)tok.len &&
-        strncmp(imm_words[i].name, tok.start, (size_t)tok.len) == 0) {
-      print_err(lexer,
-                "Word name '%.*s' conflicts with immediate word name\n",
-                tok.len,
-                tok.start);
-      return -1;
-    }
+  if (find_imm_word(tok.start, tok.len)) {
+    print_err(lexer,
+              "Word name '%.*s' conflicts with immediate word name\n",
+              tok.len,
+              tok.start);
+    return -1;
   }
 
   // Check that word definition does not already exists
@@ -684,26 +694,20 @@ static int onda_compile_word(onda_lexer_t* lexer,
 static int onda_compile_expr(onda_lexer_t* lexer,
                              onda_env_t* env,
                              onda_code_obj_t* cobj) {
-
   onda_token_t tok;
   onda_token_next(lexer, &tok);
 
   switch (tok.type) {
   case TOKEN_COLON:
     return onda_compile_word(lexer, env, cobj);
-    break;
-  case TOKEN_IDENTIFIER:
+  case TOKEN_IDENTIFIER: {
     // Is it an immediate word
-    for (size_t i = 0; i < num_imm_words; i++) {
-      if (strlen(imm_words[i].name) != (size_t)tok.len ||
-          strncmp(imm_words[i].name, tok.start, (size_t)tok.len) != 0)
-        continue;
-      if (imm_words[i].handler) {
-        return imm_words[i].handler(lexer, env, cobj);
-      } else {
-        CODE_PUSH_BYTE(imm_words[i].opcode);
-        return 0;
-      }
+    const onda_imm_word_t* imm_word = find_imm_word(tok.start, tok.len);
+    if (imm_word) {
+      if (imm_word->handler)
+        return imm_word->handler(lexer, env, cobj);
+      CODE_PUSH_BYTE(imm_word->opcode);
+      return 0;
     }
 
     // Is it a defined word?
@@ -744,6 +748,7 @@ static int onda_compile_expr(onda_lexer_t* lexer,
 
     print_err(lexer, "Unknown identifier '%.*s'\n", tok.len, tok.start);
     return -1; // unknown identifier
+  }
   case TOKEN_NUMBER:
     if (tok.number <= 0x7F && tok.number >= -0x80) {
       CODE_PUSH_BYTE(ONDA_OP_PUSH_CONST_U8);
@@ -811,10 +816,8 @@ int onda_compile_file(const char* filepath,
   const char* prev_filepath = lexer->filepath;
   const char* prev_filename = lexer->filename;
   const char* prev_src = lexer->src;
-  size_t prev_column, prev_line, prev_pos;
-  prev_column = lexer->column;
-  prev_line = lexer->line;
-  prev_pos = lexer->pos;
+  size_t prev_column = lexer->column, prev_line = lexer->line,
+         prev_pos = lexer->pos;
 
   // Extract current file base path for resolving relative imports
   resolved_path[0] = '\0';

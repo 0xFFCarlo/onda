@@ -89,8 +89,8 @@ static int64_t* onda_memcmp(int64_t* sp) {
   void* ptr2 = (void*)(uintptr_t)(*(sp + 1));
   size_t n = (size_t)(*(sp + 2));
   int result = memcmp(ptr1, ptr2, n);
-  *sp = (int64_t)result;
-  return sp + 3;
+  *(sp + 2) = (int64_t)result;
+  return sp + 2;
 }
 
 static int64_t* onda_strlen(int64_t* sp) {
@@ -103,8 +103,17 @@ static int64_t* onda_strcmp(int64_t* sp) {
   char* str1 = (char*)(uintptr_t)(*sp);
   char* str2 = (char*)(uintptr_t)(*(sp + 1));
   int result = strcmp(str1, str2);
-  *sp = (int64_t)result;
+  *(sp + 1) = (int64_t)result;
   return sp + 1;
+}
+
+static int64_t* onda_strncmp(int64_t* sp) {
+  char* str1 = (char*)(uintptr_t)(*sp);
+  char* str2 = (char*)(uintptr_t)(*(sp + 1));
+  size_t n = (size_t)(*(sp + 2));
+  int result = strncmp(str1, str2, n);
+  *(sp + 2) = (int64_t)result;
+  return sp + 2;
 }
 
 static int64_t* onda_strcpy(int64_t* sp) {
@@ -114,11 +123,41 @@ static int64_t* onda_strcpy(int64_t* sp) {
   return sp + 2;
 }
 
+static int64_t* onda_strncpy(int64_t* sp) {
+  char* dest = (char*)(uintptr_t)(*sp);
+  char* src = (char*)(uintptr_t)(*(sp + 1));
+  size_t n = (size_t)(*(sp + 2));
+  strncpy(dest, src, n);
+  return sp + 3;
+}
+
 static int64_t* onda_strcat(int64_t* sp) {
   char* dest = (char*)(uintptr_t)(*sp);
   char* src = (char*)(uintptr_t)(*(sp + 1));
   strcat(dest, src);
   return sp + 2;
+}
+
+static int64_t* onda_strncat(int64_t* sp) {
+  char* dest = (char*)(uintptr_t)(*sp);
+  char* src = (char*)(uintptr_t)(*(sp + 1));
+  size_t n = (size_t)(*(sp + 2));
+  strncat(dest, src, n);
+  return sp + 3;
+}
+
+static int64_t* onda_strchr(int64_t* sp) {
+  char* str = (char*)(uintptr_t)(*(sp + 1));
+  int ch = (int)(*sp);
+  *(sp + 1) = (int64_t)(uintptr_t)strchr(str, ch);
+  return sp + 1;
+}
+
+static int64_t* onda_strstr(int64_t* sp) {
+  char* haystack = (char*)(uintptr_t)(*(sp + 1));
+  char* needle = (char*)(uintptr_t)(*sp);
+  *(sp + 1) = (int64_t)(uintptr_t)strstr(haystack, needle);
+  return sp + 1;
 }
 
 static int64_t* onda_fopen(int64_t* sp) {
@@ -129,11 +168,17 @@ static int64_t* onda_fopen(int64_t* sp) {
   return sp + 1;
 }
 
+static int64_t* onda_tmpfile(int64_t* sp) {
+  sp--;
+  *sp = (int64_t)(uintptr_t)tmpfile();
+  return sp;
+}
+
 static int64_t* onda_fclose(int64_t* sp) {
   FILE* file = (FILE*)(uintptr_t)(*sp);
   int result = fclose(file);
   *sp = (int64_t)result;
-  return sp + 1;
+  return sp;
 }
 
 static int64_t* onda_fread(int64_t* sp) {
@@ -156,6 +201,90 @@ static int64_t* onda_fwrite(int64_t* sp) {
   return sp + 3;
 }
 
+static int64_t* onda_fseek(int64_t* sp) {
+  int whence = (int)(*sp);
+  long offset = (long)(*(sp + 1));
+  FILE* stream = (FILE*)(uintptr_t)(*(sp + 2));
+  *(sp + 2) = (int64_t)fseek(stream, offset, whence);
+  return sp + 2;
+}
+
+static int64_t* onda_ftell(int64_t* sp) {
+  FILE* stream = (FILE*)(uintptr_t)(*sp);
+  *sp = (int64_t)ftell(stream);
+  return sp;
+}
+
+static int64_t* onda_fflush(int64_t* sp) {
+  FILE* stream = (FILE*)(uintptr_t)(*sp);
+  *sp = (int64_t)fflush(stream);
+  return sp;
+}
+
+static int64_t* onda_feof(int64_t* sp) {
+  FILE* stream = (FILE*)(uintptr_t)(*sp);
+  *sp = (int64_t)feof(stream);
+  return sp;
+}
+
+static int64_t* onda_ferror(int64_t* sp) {
+  FILE* stream = (FILE*)(uintptr_t)(*sp);
+  *sp = (int64_t)ferror(stream);
+  return sp;
+}
+
+static int64_t* onda_rewind(int64_t* sp) {
+  FILE* stream = (FILE*)(uintptr_t)(*sp);
+  rewind(stream);
+  return sp + 1;
+}
+
+static int64_t* onda_clearerr(int64_t* sp) {
+  FILE* stream = (FILE*)(uintptr_t)(*sp);
+  clearerr(stream);
+  return sp + 1;
+}
+
+static int64_t* onda_remove(int64_t* sp) {
+  char* filename = (char*)(uintptr_t)(*sp);
+  *sp = (int64_t)remove(filename);
+  return sp;
+}
+
+static int64_t* onda_rename(int64_t* sp) {
+  char* old_path = (char*)(uintptr_t)(*(sp + 1));
+  char* new_path = (char*)(uintptr_t)(*sp);
+  *(sp + 1) = (int64_t)rename(old_path, new_path);
+  return sp + 1;
+}
+
+static int64_t* onda_atoi(int64_t* sp) {
+  char* str = (char*)(uintptr_t)(*sp);
+  *sp = (int64_t)atoi(str);
+  return sp;
+}
+
+static int64_t* onda_strtol(int64_t* sp) {
+  char* str = (char*)(uintptr_t)(*(sp + 1));
+  int base = (int)(*sp);
+  char* endptr = NULL;
+  *(sp + 1) = (int64_t)strtol(str, &endptr, base);
+  return sp + 1;
+}
+
+static int64_t* onda_strtoul(int64_t* sp) {
+  char* str = (char*)(uintptr_t)(*(sp + 1));
+  int base = (int)(*sp);
+  char* endptr = NULL;
+  *(sp + 1) = (int64_t)strtoul(str, &endptr, base);
+  return sp + 1;
+}
+
+static int64_t* onda_nl(int64_t* sp) {
+  putchar('\n');
+  return sp;
+}
+
 static int64_t* onda_exit(int64_t* sp) {
   int64_t code = *sp;
   exit((int)code);
@@ -172,6 +301,8 @@ static const onda_native_fn_t std_fns[] = {
     {"print_ptr", 9, onda_print_ptr, 1, 0},
     {"print_char", 10, onda_print_char, 1, 0},
     {"print_str", 9, onda_print_string, 1, 0},
+    {"emit", 4, onda_print_char, 1, 0},
+    {"nl", 2, onda_nl, 0, 0},
     {"malloc", 6, onda_malloc, 1, 1},
     {"calloc", 6, onda_calloc, 2, 1},
     {"free", 4, onda_free, 1, 0},
@@ -181,12 +312,30 @@ static const onda_native_fn_t std_fns[] = {
     {"memcmp", 6, onda_memcmp, 3, 1},
     {"strlen", 6, onda_strlen, 1, 1},
     {"strcmp", 6, onda_strcmp, 2, 1},
+    {"strncmp", 7, onda_strncmp, 3, 1},
     {"strcpy", 6, onda_strcpy, 2, 0},
+    {"strncpy", 7, onda_strncpy, 3, 0},
     {"strcat", 6, onda_strcat, 2, 0},
+    {"strncat", 7, onda_strncat, 3, 0},
+    {"strchr", 6, onda_strchr, 2, 1},
+    {"strstr", 6, onda_strstr, 2, 1},
+    {"atoi", 4, onda_atoi, 1, 1},
+    {"strtol", 6, onda_strtol, 2, 1},
+    {"strtoul", 7, onda_strtoul, 2, 1},
     {"fopen", 5, onda_fopen, 2, 1},
+    {"tmpfile", 7, onda_tmpfile, 0, 1},
     {"fclose", 6, onda_fclose, 1, 1},
     {"fread", 5, onda_fread, 4, 1},
     {"fwrite", 6, onda_fwrite, 4, 1},
+    {"fseek", 5, onda_fseek, 3, 1},
+    {"ftell", 5, onda_ftell, 1, 1},
+    {"fflush", 6, onda_fflush, 1, 1},
+    {"feof", 4, onda_feof, 1, 1},
+    {"ferror", 6, onda_ferror, 1, 1},
+    {"rewind", 6, onda_rewind, 1, 0},
+    {"clearerr", 8, onda_clearerr, 1, 0},
+    {"remove", 6, onda_remove, 1, 1},
+    {"rename", 6, onda_rename, 2, 1},
     {"exit", 4, onda_exit, 1, 0},
 };
 

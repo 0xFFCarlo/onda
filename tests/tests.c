@@ -231,6 +231,22 @@ static const test_case_t tests[] = {
      2,
      0,
      44},
+    //===================
+    // C stdlib wrappers
+    //===================
+    // Stack-effect regression checks
+    {"\"same\" \"same\" strcmp ret", 1, 0},
+    {"2 \"abd\" \"abc\" memcmp ret", 1, 0},
+    {"2 \"abd\" \"abc\" strncmp ret", 1, 0},
+
+    // String search helpers
+    {"\"hello\" dup 101 strchr swap 1 + == ret", 1, 1},
+    {"\"banana\" dup \"nan\" strstr swap 2 + == ret", 1, 1},
+
+    // Number parsing helpers
+    {"\"123\" atoi ret", 1, 123},
+    {"\"2a\" 16 strtol ret", 1, 42},
+    {"\"2a\" 16 strtoul ret", 1, 42},
 
     //===================
     // Large constants (exercise PUSH_CONST_U32 / PUSH_CONST_U64 paths)
@@ -325,7 +341,8 @@ int main() {
       int64_t val = *(vm->sp + 1);
       if (val != tc->expected_result_b) {
         fprintf(stderr,
-                "Test %zu failed: expected TOS-1 %" PRId64 ", got %" PRId64 "\n",
+                "Test %zu failed: expected TOS-1 %" PRId64 ", got %" PRId64
+                "\n",
                 i,
                 tc->expected_result_b,
                 val);
@@ -369,7 +386,8 @@ int main() {
     if (tc->stack_size > 0) {
       if (tos != tc->expected_result_a) {
         fprintf(stderr,
-                "Test %zu JIT failed: expected TOS %" PRId64 ", got %" PRIu64 "\n",
+                "Test %zu JIT failed: expected TOS %" PRId64 ", got %" PRIu64
+                "\n",
                 i,
                 tc->expected_result_a,
                 tos);
