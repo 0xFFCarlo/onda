@@ -89,10 +89,16 @@ static const test_case_t tests[] = {
     // --- LOGICAL AND (and): assume nonzero=true, result 1/0
     {"1 1 and ret", 1, 1},
     {"1 0 and ret", 1, 0},
+    // non-boolean operands should still normalize to 1/0
+    {"2 4 and ret", 1, 1},
+    {"0 7 and ret", 1, 0},
 
     // --- LOGICAL OR (or): assume nonzero=true, result 1/0
     {"0 0 or ret", 1, 0},
     {"1 0 or ret", 1, 1},
+    // non-boolean operands should still normalize to 1/0
+    {"2 4 or ret", 1, 1},
+    {"0 9 or ret", 1, 1},
 
     //===================
     // Stack operations
@@ -255,6 +261,11 @@ static const test_case_t tests[] = {
     {"0 5 / ret", 1, 0},
     // Chained: (2 + 3) * 4 = 20
     {"2 3 + 4 * ret", 1, 20},
+    // Signed division/modulo (negative operands)
+    {"0 3 - 2 / ret", 1, -1},
+    {"0 3 - 2 % ret", 1, -1},
+    {"0 7 - 0 3 - / ret", 1, 2},
+    {"0 7 - 0 3 - % ret", 1, -1},
 
 };
 

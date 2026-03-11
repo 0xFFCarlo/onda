@@ -28,6 +28,7 @@
 #define AA64_ADD(dst, a, b)  (0x8B000000 | ((b) << 16) | ((a) << 5) | dst)
 #define AA64_SUB(dst, a, b)  (0xCB000000 | ((b) << 16) | ((a) << 5) | dst)
 #define AA64_MUL(dst, a, b)  (0x9B007C00 | ((b) << 16) | ((a) << 5) | dst)
+#define AA64_SDIV(dst, a, b) (0x9AC00C00 | ((b) << 16) | ((a) << 5) | dst)
 #define AA64_UDIV(dst, a, b) (0x9AC00800 | ((b) << 16) | ((a) << 5) | dst)
 #define AA64_MSUB(dst, n, m, a)                                                \
   (0x9B008000 | (((m)&31u) << 16) | (((a)&31u) << 10) | (((n)&31u) << 5) |     \
@@ -39,6 +40,7 @@
 #define AA64_NOT_X0_X0      (0xAA2003E0) // orn x0, x0, xzr
 #define AA64_CMP_X0_0       (0xF100001F) // cmp x0, #0
 #define AA64_CMP(n, m)      (0xEB00001Fu | (((m)&31u) << 16) | (((n)&31u) << 5))
+#define AA64_CSET_NE(rd)    (0x9A9F07E0 | ((rd)&31u)) // cset xD, ne
 #define AA64_CSET_X0_NE     (0x9A9F07E0) // cset x0, ne
 #define AA64_CSET_X0_EQ     (0x9A9F17E0) // cset x0, eq
 #define AA64_CSET_X0_LT     (0x9A9FA7E0) // cset x0, lt
@@ -284,16 +286,26 @@ size_t onda_jit_aarch64(const uint8_t* bytecode,
       EMIT2(AA64_POP_STACK(1), AA64_MUL(0, 1, 0));
       break;
     case ONDA_OP_DIV:
-      EMIT2(AA64_POP_STACK(1), AA64_UDIV(0, 1, 0));
+      EMIT2(AA64_POP_STACK(1), AA64_SDIV(0, 1, 0));
       break;
     case ONDA_OP_MOD:
-      EMIT3(AA64_POP_STACK(1), AA64_UDIV(2, 1, 0), AA64_MSUB(0, 2, 0, 1));
+      EMIT3(AA64_POP_STACK(1), AA64_SDIV(2, 1, 0), AA64_MSUB(0, 2, 0, 1));
       break;
     case ONDA_OP_AND:
-      EMIT2(AA64_POP_STACK(1), AA64_AND(0, 1, 0));
+      EMIT(AA64_POP_STACK(1));
+      EMIT(AA64_CMP(1, 31));  // x1 != 0
+      EMIT(AA64_CSET_NE(1));  // x1 = x1 != 0
+      EMIT(AA64_CMP_X0_0);    // x0 != 0
+      EMIT(AA64_CSET_X0_NE);  // x0 = x0 != 0
+      EMIT(AA64_AND(0, 1, 0)); // x0 = x1 && x0
       break;
     case ONDA_OP_OR:
-      EMIT2(AA64_POP_STACK(1), AA64_ORR(0, 1, 0));
+      EMIT(AA64_POP_STACK(1));
+      EMIT(AA64_CMP(1, 31));  // x1 != 0
+      EMIT(AA64_CSET_NE(1));  // x1 = x1 != 0
+      EMIT(AA64_CMP_X0_0);    // x0 != 0
+      EMIT(AA64_CSET_X0_NE);  // x0 = x0 != 0
+      EMIT(AA64_ORR(0, 1, 0)); // x0 = x1 || x0
       break;
     case ONDA_OP_EQ:
       EMIT3(AA64_POP_STACK(1), AA64_CMP(1, 0), AA64_CSET_X0_EQ);
