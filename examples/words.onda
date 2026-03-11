@@ -1,4 +1,0 @@
-: add   + ;
-: .     dup print ;
-: main  10 20 add . ;
-

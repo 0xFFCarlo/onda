@@ -1,9 +1,9 @@
 : main
   if 10 15 > then
-    "Temperature is cold\n" prints
+    "Temperature is cold\n" .s
     ret
   else
-  "Temperature is warm\n" prints
+  "Temperature is warm\n" .s
    ret
   end
 ;

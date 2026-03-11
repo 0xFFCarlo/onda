@@ -3,4 +3,4 @@
   b b * -> bb
   aa bb + ;
 
-: main 3 4 dist2 print ;
+: main 3 4 dist2 . ;
