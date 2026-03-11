@@ -79,6 +79,10 @@ typedef struct {
   // Tracks innermost loop start pc for handling continue statements.
   // Its equal to -1 if not in a loop.
   int32_t inner_loop_start_pc;
+  // Last emitted opcode start positions for peephole optimizations.
+  uint8_t recent_opcodes[3];
+  size_t recent_opcode_pos[3];
+  uint8_t recent_opcode_count;
 } onda_code_obj_t;
 
 // Get next token from the lexer

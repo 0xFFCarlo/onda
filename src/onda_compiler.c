@@ -259,6 +259,36 @@ static void onda_token_peek(onda_lexer_t* lexer, onda_token_t* t) {
     cobj->size += (len);                                                       \
   } while (0)
 
+static inline void code_recent_push(onda_code_obj_t* cobj,
+                                    uint8_t opcode,
+                                    size_t opcode_pos) {
+  if (cobj->recent_opcode_count < 3) {
+    const uint8_t idx = cobj->recent_opcode_count++;
+    cobj->recent_opcodes[idx] = opcode;
+    cobj->recent_opcode_pos[idx] = opcode_pos;
+    return;
+  }
+  cobj->recent_opcodes[0] = cobj->recent_opcodes[1];
+  cobj->recent_opcodes[1] = cobj->recent_opcodes[2];
+  cobj->recent_opcodes[2] = opcode;
+  cobj->recent_opcode_pos[0] = cobj->recent_opcode_pos[1];
+  cobj->recent_opcode_pos[1] = cobj->recent_opcode_pos[2];
+  cobj->recent_opcode_pos[2] = opcode_pos;
+}
+
+static inline void code_recent_trim(onda_code_obj_t* cobj, size_t new_size) {
+  while (cobj->recent_opcode_count > 0 &&
+         cobj->recent_opcode_pos[cobj->recent_opcode_count - 1] >= new_size) {
+    cobj->recent_opcode_count--;
+  }
+}
+
+#define CODE_PUSH_OPCODE(op)                                                   \
+  do {                                                                         \
+    CODE_PUSH_BYTE((op));                                                      \
+    code_recent_push(cobj, (op), cobj->size - 1);                              \
+  } while (0)
+
 // Create new scope and push onto code object's scope stack
 static inline void onda_scope_push(onda_code_obj_t* code) {
   onda_scope_t* new_scope = (onda_scope_t*)onda_malloc(sizeof(onda_scope_t));
@@ -361,7 +391,7 @@ static int onda_compile_if(onda_lexer_t* lexer,
   if (rc < 0)
     return rc;
 
-  CODE_PUSH_BYTE(ONDA_OP_JUMP_IF_FALSE);
+  CODE_PUSH_OPCODE(ONDA_OP_JUMP_IF_FALSE);
   size_t condition_jmp_pc = cobj->size;
   CODE_PUSH_BYTES(&(int16_t){0},
                   sizeof(int16_t)); // placeholder for jump offset
@@ -372,7 +402,7 @@ static int onda_compile_if(onda_lexer_t* lexer,
   // If we ended on "else", we need to emit a jump over the else block
   size_t then_jmp_pc;
   if (rc == 0) {
-    CODE_PUSH_BYTE(ONDA_OP_JUMP);
+    CODE_PUSH_OPCODE(ONDA_OP_JUMP);
     then_jmp_pc = cobj->size;
     CODE_PUSH_BYTES(&(int16_t){0},
                     sizeof(int16_t)); // placeholder for jump offset
@@ -404,7 +434,7 @@ static int onda_compile_while(onda_lexer_t* lexer,
   if (rc < 0)
     return rc;
 
-  CODE_PUSH_BYTE(ONDA_OP_JUMP_IF_FALSE);
+  CODE_PUSH_OPCODE(ONDA_OP_JUMP_IF_FALSE);
   size_t condition_jmp_pc = cobj->size;
   CODE_PUSH_BYTES(&(int16_t){0},
                   sizeof(int16_t)); // placeholder for jump offset
@@ -414,7 +444,7 @@ static int onda_compile_while(onda_lexer_t* lexer,
     return rc;
 
   // Emit jump back to loop start
-  CODE_PUSH_BYTE(ONDA_OP_JUMP);
+  CODE_PUSH_OPCODE(ONDA_OP_JUMP);
   size_t loop_end_jmp_pc = cobj->size;
   const int16_t loop_back_offset = (int16_t)(loop_start_pc - loop_end_jmp_pc);
   CODE_PUSH_BYTES(&loop_back_offset, sizeof(int16_t));
@@ -471,26 +501,48 @@ static int onda_compile_store_local(onda_lexer_t* lexer,
     return -1;
   }
   const uint8_t local_slot = local_id + ONDA_LOCALS_BASE_OFF;
-  // Optimize inc and dec patterns:
-  if (cobj->size >= 3 && cobj->code[cobj->size - 3] == ONDA_OP_PUSH_LOCAL &&
-      cobj->code[cobj->size - 2] == local_slot &&
-      cobj->code[cobj->size - 1] == ONDA_OP_INC) {
-    cobj->size -= 3;
-    CODE_PUSH_BYTE(ONDA_OP_INC_LOCAL);
-    CODE_PUSH_BYTE(local_slot);
-    return 0;
+  // Try to fold into previous push local + inc/dec if possible
+  if (cobj->recent_opcode_count >= 2 &&
+      cobj->recent_opcodes[cobj->recent_opcode_count - 2] ==
+          ONDA_OP_PUSH_LOCAL) {
+    const size_t push_pos =
+        cobj->recent_opcode_pos[cobj->recent_opcode_count - 2];
+    const uint8_t last_op = cobj->recent_opcodes[cobj->recent_opcode_count - 1];
+    if (cobj->code[push_pos + 1] == local_slot && last_op == ONDA_OP_INC) {
+      cobj->size = push_pos;
+      code_recent_trim(cobj, cobj->size);
+      CODE_PUSH_OPCODE(ONDA_OP_INC_LOCAL);
+      CODE_PUSH_BYTE(local_slot);
+      return 0;
+    }
+    if (cobj->code[push_pos + 1] == local_slot && last_op == ONDA_OP_DEC) {
+      cobj->size = push_pos;
+      code_recent_trim(cobj, cobj->size);
+      CODE_PUSH_OPCODE(ONDA_OP_DEC_LOCAL);
+      CODE_PUSH_BYTE(local_slot);
+      return 0;
+    }
   }
-  if (cobj->size >= 3 && cobj->code[cobj->size - 3] == ONDA_OP_PUSH_LOCAL &&
-      cobj->code[cobj->size - 2] == local_slot &&
-      cobj->code[cobj->size - 1] == ONDA_OP_DEC) {
-    cobj->size -= 3;
-    CODE_PUSH_BYTE(ONDA_OP_DEC_LOCAL);
-    CODE_PUSH_BYTE(local_slot);
-    return 0;
-  }
-  CODE_PUSH_BYTE(ONDA_OP_STORE_LOCAL);
+  CODE_PUSH_OPCODE(ONDA_OP_STORE_LOCAL);
   CODE_PUSH_BYTE(local_slot);
   return 0;
+}
+
+static inline int code_try_fold_imm_arith(onda_code_obj_t* cobj,
+                                          uint8_t arith_opcode) {
+  if (cobj->recent_opcode_count < 1)
+    return 0;
+  if (cobj->recent_opcodes[cobj->recent_opcode_count - 1] !=
+      ONDA_OP_PUSH_CONST_U8) {
+    return 0;
+  }
+  const size_t push_pos = cobj->recent_opcode_pos[cobj->recent_opcode_count - 1];
+  const uint8_t imm8 = cobj->code[push_pos + 1];
+  cobj->size = push_pos;
+  code_recent_trim(cobj, cobj->size);
+  CODE_PUSH_OPCODE(arith_opcode);
+  CODE_PUSH_BYTE(imm8);
+  return 1;
 }
 
 static int onda_compile_import(onda_lexer_t* lexer,
@@ -524,7 +576,7 @@ static int onda_compile_continue(onda_lexer_t* lexer,
     return -1;
   }
   // Emit jump back to loop start
-  CODE_PUSH_BYTE(ONDA_OP_JUMP);
+  CODE_PUSH_OPCODE(ONDA_OP_JUMP);
   size_t loop_end_jmp_pc = cobj->size;
   const int16_t loop_back_offset =
       (int16_t)(cobj->inner_loop_start_pc - loop_end_jmp_pc);
@@ -688,7 +740,7 @@ static int onda_compile_word(onda_lexer_t* lexer,
   do {
     onda_token_peek(lexer, &tok);
     if (tok.type == TOKEN_SEMICOLON) {
-      CODE_PUSH_BYTE(ONDA_OP_RET);
+      CODE_PUSH_OPCODE(ONDA_OP_RET);
       onda_token_next(lexer, &tok); // consume ';'
       break;
     }
@@ -724,26 +776,23 @@ static int onda_compile_expr(onda_lexer_t* lexer,
     if (imm_word) {
       if (imm_word->handler)
         return imm_word->handler(lexer, env, cobj);
-      // Optimize certain patterns like "imm8 OP" into "OP_CONST_I8"
-      if ((imm_word->opcode == ONDA_OP_ADD ||
-           imm_word->opcode == ONDA_OP_MUL) &&
-          cobj->size >= 2 &&
-          cobj->code[cobj->size - 2] == ONDA_OP_PUSH_CONST_U8) {
-        const uint8_t imm8 = cobj->code[cobj->size - 1];
-        cobj->size -= 2;
-        CODE_PUSH_BYTE(imm_word->opcode == ONDA_OP_ADD ? ONDA_OP_ADD_CONST_I8
-                                                       : ONDA_OP_MUL_CONST_I8);
-        CODE_PUSH_BYTE(imm8);
+      // Optimize certain patterns like "imm8 OP" into "OP_CONST_I8".
+      if (imm_word->opcode == ONDA_OP_ADD &&
+          code_try_fold_imm_arith(cobj, ONDA_OP_ADD_CONST_I8)) {
         return 0;
       }
-      CODE_PUSH_BYTE(imm_word->opcode);
+      if (imm_word->opcode == ONDA_OP_MUL &&
+          code_try_fold_imm_arith(cobj, ONDA_OP_MUL_CONST_I8)) {
+        return 0;
+      }
+      CODE_PUSH_OPCODE(imm_word->opcode);
       return 0;
     }
 
     // Is it a defined word?
     uint64_t word_id;
     if (onda_dict_get(&cobj->words_map, tok.start, tok.len, &word_id) == 0) {
-      CODE_PUSH_BYTE(ONDA_OP_CALL);
+      CODE_PUSH_OPCODE(ONDA_OP_CALL);
       CODE_PUSH_BYTE(cobj->words[word_id].args_count);
       CODE_PUSH_BYTE(cobj->words[word_id].locals_count);
       const size_t call_pc = cobj->size;
@@ -758,7 +807,7 @@ static int onda_compile_expr(onda_lexer_t* lexer,
     // Is it a local variable?
     uint8_t local_id;
     if (onda_scope_get(cobj, tok.start, tok.len, &local_id) == 0) {
-      CODE_PUSH_BYTE(ONDA_OP_PUSH_LOCAL);
+      CODE_PUSH_OPCODE(ONDA_OP_PUSH_LOCAL);
       CODE_PUSH_BYTE(local_id + ONDA_LOCALS_BASE_OFF);
       return 0;
     }
@@ -769,7 +818,7 @@ static int onda_compile_expr(onda_lexer_t* lexer,
                       tok.start,
                       tok.len,
                       &func_id) == 0) {
-      CODE_PUSH_BYTE(ONDA_OP_CALL_NATIVE);
+      CODE_PUSH_OPCODE(ONDA_OP_CALL_NATIVE);
       uint64_t func =
           (uint64_t)(uintptr_t)env->native_registry.items[func_id].fn;
       CODE_PUSH_BYTES(&func, sizeof(uint64_t));
@@ -781,14 +830,14 @@ static int onda_compile_expr(onda_lexer_t* lexer,
   }
   case TOKEN_NUMBER:
     if (tok.number <= 0x7F && tok.number >= -0x80) {
-      CODE_PUSH_BYTE(ONDA_OP_PUSH_CONST_U8);
+      CODE_PUSH_OPCODE(ONDA_OP_PUSH_CONST_U8);
       CODE_PUSH_BYTE((int8_t)tok.number);
     } else if ((tok.number <= INT32_MAX) && (tok.number >= INT32_MIN)) {
-      CODE_PUSH_BYTE(ONDA_OP_PUSH_CONST_U32);
+      CODE_PUSH_OPCODE(ONDA_OP_PUSH_CONST_U32);
       const uint32_t val = (int32_t)(tok.number);
       CODE_PUSH_BYTES(&val, sizeof(int32_t));
     } else {
-      CODE_PUSH_BYTE(ONDA_OP_PUSH_CONST_U64);
+      CODE_PUSH_OPCODE(ONDA_OP_PUSH_CONST_U64);
       const uint64_t val = (int64_t)(tok.number);
       CODE_PUSH_BYTES(&val, sizeof(int64_t));
     }
@@ -799,7 +848,7 @@ static int onda_compile_expr(onda_lexer_t* lexer,
     char* str_data = onda_malloc(tok.len + 1);
     memcpy(str_data, tok.start, tok.len);
     str_data[tok.len] = '\0';
-    CODE_PUSH_BYTE(ONDA_OP_PUSH_CONST_U64);
+    CODE_PUSH_OPCODE(ONDA_OP_PUSH_CONST_U64);
     const uint64_t addr = (uint64_t)(uintptr_t)str_data;
     CODE_PUSH_BYTES(&addr, sizeof(uint64_t));
     break;
@@ -915,6 +964,7 @@ int onda_code_obj_init(onda_code_obj_t* cobj, size_t initial_capacity) {
   cobj->words = NULL;
   cobj->words_count = 0;
   cobj->inner_loop_start_pc = -1;
+  cobj->recent_opcode_count = 0;
   return 0;
 }
 
