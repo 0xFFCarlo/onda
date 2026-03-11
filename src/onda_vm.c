@@ -33,6 +33,8 @@ static const char* opcode_to_str[ONDA_OP_COUNT] = {
     [ONDA_OP_MUL] = "MUL",
     [ONDA_OP_DIV] = "DIV",
     [ONDA_OP_MOD] = "MOD",
+    [ONDA_OP_ADD_CONST_I8] = "ADD_CONST_I8",
+    [ONDA_OP_MUL_CONST_I8] = "MUL_CONST_I8",
     [ONDA_OP_INC] = "INC",
     [ONDA_OP_DEC] = "DEC",
     [ONDA_OP_AND] = "AND",
@@ -49,6 +51,8 @@ static const char* opcode_to_str[ONDA_OP_COUNT] = {
     [ONDA_OP_PUSH_CONST_U64] = "PUSH_CONST_U64",
     [ONDA_OP_PUSH_LOCAL] = "PUSH_FROM_LOCAL",
     [ONDA_OP_STORE_LOCAL] = "STORE_TO_LOCAL",
+    [ONDA_OP_INC_LOCAL] = "INC_LOCAL",
+    [ONDA_OP_DEC_LOCAL] = "DEC_LOCAL",
     [ONDA_OP_PUSH_FROM_ADDR_B] = "PUSH_FROM_ADDR_B",
     [ONDA_OP_STORE_TO_ADDR_B] = "STORE_TO_ADDR_B",
     [ONDA_OP_PUSH_FROM_ADDR_HW] = "PUSH_FROM_ADDR_Hw",
@@ -74,6 +78,10 @@ static const uint8_t opcode_args_byte[ONDA_OP_COUNT] = {
     [ONDA_OP_PUSH_CONST_U64] = sizeof(uint64_t),
     [ONDA_OP_PUSH_LOCAL] = sizeof(uint8_t),
     [ONDA_OP_STORE_LOCAL] = sizeof(uint8_t),
+    [ONDA_OP_ADD_CONST_I8] = sizeof(int8_t),
+    [ONDA_OP_MUL_CONST_I8] = sizeof(int8_t),
+    [ONDA_OP_INC_LOCAL] = sizeof(uint8_t),
+    [ONDA_OP_DEC_LOCAL] = sizeof(uint8_t),
     [ONDA_OP_JUMP] = sizeof(int16_t),
     [ONDA_OP_JUMP_IF_FALSE] = sizeof(int16_t),
     [ONDA_OP_CALL] = sizeof(int32_t) + 2,
@@ -140,6 +148,8 @@ int onda_vm_run(onda_vm_t* vm) {
       [ONDA_OP_MUL] = &&op_mul,
       [ONDA_OP_DIV] = &&op_div,
       [ONDA_OP_MOD] = &&op_mod,
+      [ONDA_OP_ADD_CONST_I8] = &&op_add_const_i8,
+      [ONDA_OP_MUL_CONST_I8] = &&op_mul_const_i8,
       [ONDA_OP_INC] = &&op_inc,
       [ONDA_OP_DEC] = &&op_dec,
       [ONDA_OP_AND] = &&op_and,
@@ -156,6 +166,8 @@ int onda_vm_run(onda_vm_t* vm) {
       [ONDA_OP_PUSH_CONST_U64] = &&op_push_const_u64,
       [ONDA_OP_PUSH_LOCAL] = &&op_push_from_local,
       [ONDA_OP_STORE_LOCAL] = &&op_store_to_local,
+      [ONDA_OP_INC_LOCAL] = &&op_inc_local,
+      [ONDA_OP_DEC_LOCAL] = &&op_dec_local,
       [ONDA_OP_PUSH_FROM_ADDR_B] = &&op_push_from_addr_b,
       [ONDA_OP_STORE_TO_ADDR_B] = &&op_store_to_addr_b,
       [ONDA_OP_PUSH_FROM_ADDR_HW] = &&op_push_from_addr_hw,
@@ -209,6 +221,12 @@ op_div:
 op_mod:
   sp++;
   *sp %= *(sp - 1);
+  DISPATCH();
+op_add_const_i8:
+  *sp += (int8_t)vm->code[pc++];
+  DISPATCH();
+op_mul_const_i8:
+  *sp *= (int8_t)vm->code[pc++];
   DISPATCH();
 op_inc:
   (*sp)++;
@@ -276,6 +294,14 @@ op_push_from_local : {
 op_store_to_local : {
   frame_bp[vm->code[pc++]] = *sp;
   sp++;
+  DISPATCH();
+}
+op_inc_local : {
+  frame_bp[vm->code[pc++]]++;
+  DISPATCH();
+}
+op_dec_local : {
+  frame_bp[vm->code[pc++]]--;
   DISPATCH();
 }
 op_push_from_addr_b:

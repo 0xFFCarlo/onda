@@ -325,6 +325,9 @@ size_t onda_jit_x86_64(const uint8_t* bytecode,
       EMIT_POP_DS_RCX;
       EMITV(0x48, 0x01, 0xC8); // add rax, rcx
       break;
+    case ONDA_OP_ADD_CONST_I8:
+      EMITV(0x48, 0x83, 0xC0, bytecode[bcode_pos++]); // add rax, imm8
+      break;
 
     case ONDA_OP_SUB:
       EMIT_POP_DS_RCX;
@@ -335,6 +338,9 @@ size_t onda_jit_x86_64(const uint8_t* bytecode,
     case ONDA_OP_MUL:
       EMIT_POP_DS_RCX;
       EMITV(0x48, 0x0F, 0xAF, 0xC1); // imul rax, rcx
+      break;
+    case ONDA_OP_MUL_CONST_I8:
+      EMITV(0x48, 0x6B, 0xC0, bytecode[bcode_pos++]); // imul rax, rax, imm8
       break;
 
     case ONDA_OP_DIV:
@@ -387,6 +393,62 @@ size_t onda_jit_x86_64(const uint8_t* bytecode,
     case ONDA_OP_DEC:
       EMITV(0x48, 0xFF, 0xC8); // dec rax
       break;
+    case ONDA_OP_INC_LOCAL: {
+      const uint8_t local_id = bytecode[bcode_pos++];
+      if (local_id >= ONDA_LOCALS_BASE_OFF &&
+          (local_id - ONDA_LOCALS_BASE_OFF) < ONDA_LOCAL_REG_COUNT) {
+        switch (local_id - ONDA_LOCALS_BASE_OFF) {
+        case 0:
+          EMITV(0x49, 0xFF, 0xC0); // inc r8
+          break;
+        case 1:
+          EMITV(0x49, 0xFF, 0xC1); // inc r9
+          break;
+        case 2:
+          EMITV(0x49, 0xFF, 0xC2); // inc r10
+          break;
+        }
+      } else {
+        uint32_t off = (uint32_t)local_id * 8;
+        if (local_id >= ONDA_LOCALS_BASE_OFF) {
+          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8;
+        }
+        if (off <= 127) {
+          EMITV(0x49, 0xFF, 0x45, (uint8_t)off); // inc qword [r13+off]
+        } else {
+          EMITV(0x49, 0xFF, 0x85); // inc qword [r13+off]
+          EMIT_IMM32(off);
+        }
+      }
+    } break;
+    case ONDA_OP_DEC_LOCAL: {
+      const uint8_t local_id = bytecode[bcode_pos++];
+      if (local_id >= ONDA_LOCALS_BASE_OFF &&
+          (local_id - ONDA_LOCALS_BASE_OFF) < ONDA_LOCAL_REG_COUNT) {
+        switch (local_id - ONDA_LOCALS_BASE_OFF) {
+        case 0:
+          EMITV(0x49, 0xFF, 0xC8); // dec r8
+          break;
+        case 1:
+          EMITV(0x49, 0xFF, 0xC9); // dec r9
+          break;
+        case 2:
+          EMITV(0x49, 0xFF, 0xCA); // dec r10
+          break;
+        }
+      } else {
+        uint32_t off = (uint32_t)local_id * 8;
+        if (local_id >= ONDA_LOCALS_BASE_OFF) {
+          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8;
+        }
+        if (off <= 127) {
+          EMITV(0x49, 0xFF, 0x4D, (uint8_t)off); // dec qword [r13+off]
+        } else {
+          EMITV(0x49, 0xFF, 0x8D); // dec qword [r13+off]
+          EMIT_IMM32(off);
+        }
+      }
+    } break;
 
     case ONDA_OP_EQ:
       EMIT_POP_DS_RCX;

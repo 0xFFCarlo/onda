@@ -277,6 +277,10 @@ static const test_case_t tests[] = {
     {"0 5 / ret", 1, 0},
     // Chained: (2 + 3) * 4 = 20
     {"2 3 + 4 * ret", 1, 20},
+    // Immediate arithmetic fusion paths
+    {"5 3 * 1 + ret", 1, 16},
+    // Fused local inc/dec must preserve caller TOS
+    {": f ( | x ) 1 -> x x -- -> x x ; : main 7 f + ;", 1, 7},
     // Signed division/modulo (negative operands)
     {"0 3 - 2 / ret", 1, -1},
     {"0 3 - 2 % ret", 1, -1},

@@ -470,8 +470,26 @@ static int onda_compile_store_local(onda_lexer_t* lexer,
     print_err(lexer, "Undefined variable in store operation");
     return -1;
   }
+  const uint8_t local_slot = local_id + ONDA_LOCALS_BASE_OFF;
+  // Optimize inc and dec patterns:
+  if (cobj->size >= 3 && cobj->code[cobj->size - 3] == ONDA_OP_PUSH_LOCAL &&
+      cobj->code[cobj->size - 2] == local_slot &&
+      cobj->code[cobj->size - 1] == ONDA_OP_INC) {
+    cobj->size -= 3;
+    CODE_PUSH_BYTE(ONDA_OP_INC_LOCAL);
+    CODE_PUSH_BYTE(local_slot);
+    return 0;
+  }
+  if (cobj->size >= 3 && cobj->code[cobj->size - 3] == ONDA_OP_PUSH_LOCAL &&
+      cobj->code[cobj->size - 2] == local_slot &&
+      cobj->code[cobj->size - 1] == ONDA_OP_DEC) {
+    cobj->size -= 3;
+    CODE_PUSH_BYTE(ONDA_OP_DEC_LOCAL);
+    CODE_PUSH_BYTE(local_slot);
+    return 0;
+  }
   CODE_PUSH_BYTE(ONDA_OP_STORE_LOCAL);
-  CODE_PUSH_BYTE(local_id + ONDA_LOCALS_BASE_OFF);
+  CODE_PUSH_BYTE(local_slot);
   return 0;
 }
 
@@ -706,6 +724,18 @@ static int onda_compile_expr(onda_lexer_t* lexer,
     if (imm_word) {
       if (imm_word->handler)
         return imm_word->handler(lexer, env, cobj);
+      // Optimize certain patterns like "imm8 OP" into "OP_CONST_I8"
+      if ((imm_word->opcode == ONDA_OP_ADD ||
+           imm_word->opcode == ONDA_OP_MUL) &&
+          cobj->size >= 2 &&
+          cobj->code[cobj->size - 2] == ONDA_OP_PUSH_CONST_U8) {
+        const uint8_t imm8 = cobj->code[cobj->size - 1];
+        cobj->size -= 2;
+        CODE_PUSH_BYTE(imm_word->opcode == ONDA_OP_ADD ? ONDA_OP_ADD_CONST_I8
+                                                       : ONDA_OP_MUL_CONST_I8);
+        CODE_PUSH_BYTE(imm8);
+        return 0;
+      }
       CODE_PUSH_BYTE(imm_word->opcode);
       return 0;
     }

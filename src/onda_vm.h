@@ -21,6 +21,8 @@ typedef enum onda_op_type {
   ONDA_OP_MUL,
   ONDA_OP_DIV,
   ONDA_OP_MOD,
+  ONDA_OP_ADD_CONST_I8,
+  ONDA_OP_MUL_CONST_I8,
   ONDA_OP_INC,
   ONDA_OP_DEC,
   // Logical Operations
@@ -40,6 +42,8 @@ typedef enum onda_op_type {
   ONDA_OP_PUSH_CONST_U64,
   ONDA_OP_PUSH_LOCAL,
   ONDA_OP_STORE_LOCAL,
+  ONDA_OP_INC_LOCAL,
+  ONDA_OP_DEC_LOCAL,
   ONDA_OP_PUSH_FROM_ADDR_B,
   ONDA_OP_STORE_TO_ADDR_B,
   ONDA_OP_PUSH_FROM_ADDR_HW,

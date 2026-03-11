@@ -26,6 +26,7 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "Failed to parse source file: %s\n", argv[1]);
     return 1;
   }
+  onda_vm_print_bytecode(cobj.code, cobj.size);
 
 #ifdef ONDA_CAN_JIT
   // Compile to machine code
