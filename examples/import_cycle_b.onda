@@ -1,0 +1,3 @@
+import "import_cycle_a.onda"
+
+:helper 2 ;

@@ -39,6 +39,8 @@ typedef struct {
   const char* src;
   const char* filename;
   const char* filepath;
+  const char* import_stack[ONDA_MAX_IMPORT_DEPTH];
+  size_t import_depth;
   size_t pos;
   size_t line;
   size_t column;

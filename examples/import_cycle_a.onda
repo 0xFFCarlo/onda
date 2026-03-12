@@ -1,0 +1,3 @@
+import "import_cycle_b.onda"
+
+:main 1 ;

@@ -883,6 +883,9 @@ int onda_compile_file(const char* filepath,
                       onda_code_obj_t* cobj) {
   char filename[ONDA_MAX_FILENAME_LEN];
   char resolved_path[ONDA_MAX_FILEPATH_LEN];
+  char* import_src = NULL;
+  int rc = -1;
+  bool pushed_import = false;
   // Extract filename
   const char* last_slash = strrchr(filepath, '/');
   if (last_slash)
@@ -916,16 +919,33 @@ int onda_compile_file(const char* filepath,
         "Resolved import path too long for file: %s (max %zu characters)\n",
         filepath,
         sizeof(resolved_path) - 1);
-    return -1;
+    goto cleanup;
   }
   strcat(resolved_path, filepath);
 
+  if (lexer->import_depth >= ONDA_MAX_IMPORT_DEPTH) {
+    print_err(lexer,
+              "Maximum import depth (%d) exceeded while importing: %s\n",
+              ONDA_MAX_IMPORT_DEPTH,
+              resolved_path);
+    goto cleanup;
+  }
+  for (size_t i = 0; i < lexer->import_depth; i++) {
+    if (strcmp(lexer->import_stack[i], resolved_path) == 0) {
+      print_err(
+          lexer, "Import cycle detected with file: %s\n", resolved_path);
+      goto cleanup;
+    }
+  }
+  lexer->import_stack[lexer->import_depth++] = resolved_path;
+  pushed_import = true;
+
   // Read imported file
   size_t import_size;
-  char* import_src = read_file(resolved_path, &import_size);
+  import_src = read_file(resolved_path, &import_size);
   if (!import_src || import_size == 0) {
     print_err(lexer, "Failed to read file: %s\n", resolved_path);
-    return -1;
+    goto cleanup;
   }
 
   // Set lexer state to imported file and compile
@@ -935,14 +955,19 @@ int onda_compile_file(const char* filepath,
   lexer->pos = 0;
   lexer->line = 0;
   lexer->column = 0;
-  int rc = onda_compile(lexer, env, cobj);
+  rc = onda_compile(lexer, env, cobj);
   if (rc != 0) {
-    print_err(lexer, "Compilation error in imported file: %s\n", resolved_path);
-    return -1;
+    print_err(
+        lexer, "Compilation error in imported file: %s\n", resolved_path);
+    goto cleanup;
   }
-  onda_free(import_src);
+  rc = 0;
 
-  // Restore lexer state
+cleanup:
+  if (import_src)
+    onda_free(import_src);
+  if (pushed_import)
+    lexer->import_depth--;
   lexer->filepath = prev_filepath;
   lexer->filename = prev_filename;
   lexer->src = prev_src;
@@ -950,7 +975,7 @@ int onda_compile_file(const char* filepath,
   lexer->line = prev_line;
   lexer->pos = prev_pos;
 
-  return 0;
+  return rc;
 }
 
 int onda_code_obj_init(onda_code_obj_t* cobj, size_t initial_capacity) {
