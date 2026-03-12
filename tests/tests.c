@@ -257,6 +257,12 @@ static const test_case_t tests[] = {
     {"4294967295 ret", 1, 4294967295LL},
     // U64: value > 0xFFFFFFFF
     {"4294967296 ret", 1, 4294967296LL},
+    // Hex literals
+    {"0x2A ret", 1, 42},
+    {"-0x2A ret", 1, -42},
+    // Binary literals
+    {"0b101010 ret", 1, 42},
+    {"-0b101010 ret", 1, -42},
 
     //===================
     // Signed comparisons with negative numbers
@@ -281,12 +287,21 @@ static const test_case_t tests[] = {
     {"5 3 * 1 + ret", 1, 16},
     // Fused local inc/dec must preserve caller TOS
     {": f ( | x ) 1 -> x x -- -> x x ; : main 7 f + ;", 1, 7},
+    // Alias word inlines body at call site
+    {"::inc1 1 + ; :main 41 inc1 ;", 1, 42},
+    // Alias can be reused and expanded multiple times
+    {"::twice dup + ; :main 10 twice twice ;", 1, 40},
     // Signed division/modulo (negative operands)
     {"0 3 - 2 / ret", 1, -1},
     {"0 3 - 2 % ret", 1, -1},
     {"0 7 - 0 3 - / ret", 1, 2},
     {"0 7 - 0 3 - % ret", 1, -1},
 
+};
+
+static const char* compile_fail_tests[] = {
+    "::bad ( a ) a ; :main 1 bad ;",
+    "::bad 1 -> x ; :main bad ;",
 };
 
 int main() {
@@ -356,6 +371,26 @@ int main() {
 
     onda_code_obj_free(&cobj);
     printf("Test %zu passed.\n", i);
+  }
+
+  printf("\nTesting compile failures:\n");
+  for (i = 0; i < sizeof(compile_fail_tests) / sizeof(compile_fail_tests[0]);
+       i++) {
+    onda_code_obj_init(&cobj, CODE_BUF_SIZE);
+    cobj.size = 0;
+    cobj.entry_pc = 0;
+    lexer.src = compile_fail_tests[i];
+    lexer.column = 0;
+    lexer.line = 0;
+    lexer.pos = 0;
+    if (onda_compile(&lexer, &env, &cobj) == 0) {
+      fprintf(stderr,
+              "Compile-fail test %zu failed: expected compilation error\n",
+              i);
+      goto failed;
+    }
+    onda_code_obj_free(&cobj);
+    printf("Compile-fail test %zu passed.\n", i);
   }
 
   onda_vm_free(vm);

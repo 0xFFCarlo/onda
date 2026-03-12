@@ -56,6 +56,12 @@ typedef struct onda_word_t {
   uint8_t args_count;
 } onda_word_t;
 
+typedef struct onda_alias_t {
+  char name[ONDA_MAX_WORD_NAME_LEN];
+  size_t name_len;
+  char* body_src;
+} onda_alias_t;
+
 typedef struct onda_scope {
   onda_dict_t locals;
   size_t locals_count;
@@ -74,6 +80,12 @@ typedef struct {
   // Word definitions
   onda_word_t* words;
   size_t words_count;
+  // Alias definitions
+  onda_dict_t aliases_map;
+  onda_alias_t* aliases;
+  size_t aliases_count;
+  // Current alias expansion depth used to avoid infinite alias recursion.
+  size_t alias_expand_depth;
   // Current scope for resolving local variables. Initially NULL.
   onda_scope_t* current_scope;
   // Native functions callable from the bytecode.

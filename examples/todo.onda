@@ -1,0 +1,113 @@
+: print_help
+  "Commands:\n" .s
+  "  a <text>  add task\n" .s
+  "  l         list tasks\n" .s
+  "  p         remove last task\n" .s
+  "  q         quit\n" .s
+;
+
+: main ( | in tasks line count running i n ch ptr )
+  "/dev/stdin" "r" fopen -> in
+  if in not then
+    "Failed to open stdin\n" .s
+    1 exit
+  end
+
+  16 64 * malloc -> tasks
+  128 malloc -> line
+  0 -> count
+  1 -> running
+
+  "Simple TODO app\n" .s
+  print_help
+
+  while running do
+    "todo> " .s
+
+    0 -> i
+    while i 127 < do
+      line i + 1 1 in fread -> n
+      if n 0 == then
+        0 line i + b!
+        127 -> i
+        continue
+      end
+
+      line i + b@ -> ch
+      if ch 10 == then
+        0 line i + b!
+        127 -> i
+        continue
+      end
+
+      if ch 13 == then
+        continue
+      end
+
+      i ++ -> i
+    end
+
+    if line "q" strcmp 0 == then
+      0 -> running
+      continue
+    end
+
+    if line "l" strcmp 0 == then
+      if count 0 == then
+        "(empty)\n" .s
+      else
+        "TODO:\n" .s
+        0 -> i
+        while i count < do
+          "- " .s
+          tasks i 64 * + .s
+          "\n" .s
+          i ++ -> i
+        end
+      end
+      continue
+    end
+
+    if line "p" strcmp 0 == then
+      if count 0 == then
+        "Nothing to remove\n" .s
+      else
+        count -- -> count
+      end
+      continue
+    end
+
+    if 2 "a " line strncmp 0 == then
+      if count 16 >= then
+        "List full (max 16 tasks)\n" .s
+        continue
+      end
+
+      tasks count 64 * + -> ptr
+      0 -> i
+      while i 63 < do
+        line 2 + i + b@ -> ch
+        ch ptr i + b!
+        if ch 0 == then
+          63 -> i
+          continue
+        end
+        i ++ -> i
+      end
+      0 ptr 63 + b!
+      count ++ -> count
+      continue
+    end
+
+    if line "help" strcmp 0 == then
+      print_help
+      continue
+    end
+
+    "Unknown command (type help)\n" .s
+  end
+
+  tasks free
+  line free
+  in fclose drop
+;
