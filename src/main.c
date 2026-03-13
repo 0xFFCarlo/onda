@@ -42,7 +42,8 @@ int main(int argc, char* argv[]) {
                    data_sp,
                    frame_bp,
                    &machine_code,
-                   &machine_code_size);
+                   &machine_code_size,
+                   &env.native_registry);
 
   // Execute program in JIT
   clock_gettime(CLOCK_MONOTONIC, &start);
@@ -56,6 +57,7 @@ int main(int argc, char* argv[]) {
   // Execute program in VM, starting from entry_pc
   onda_vm_t* vm = onda_vm_new();
   onda_vm_load_code(vm, cobj.code, cobj.entry_pc, cobj.size);
+  vm->env = &env;
   printf("Executing with VM:\n");
   vm->debug_mode = true;
   clock_gettime(CLOCK_MONOTONIC, &start);

@@ -85,7 +85,7 @@ static const uint8_t opcode_args_byte[ONDA_OP_COUNT] = {
     [ONDA_OP_JUMP] = sizeof(int16_t),
     [ONDA_OP_JUMP_IF_FALSE] = sizeof(int16_t),
     [ONDA_OP_CALL] = sizeof(int32_t) + 2,
-    [ONDA_OP_CALL_NATIVE] = sizeof(uint64_t),
+    [ONDA_OP_CALL_NATIVE] = sizeof(uint32_t),
 };
 
 void onda_vm_print_bytecode(const uint8_t* code, size_t code_size) {
@@ -385,10 +385,10 @@ op_call : {
   DISPATCH();
 }
 op_call_native : {
-  onda_native_fn_cb_t fn;
-  memcpy(&fn, &vm->code[pc], sizeof(onda_native_fn_cb_t));
-  pc += sizeof(uint64_t);
-  int64_t* new_ds = fn(sp);
+  uint32_t idx;
+  memcpy(&idx, &vm->code[pc], sizeof(uint32_t));
+  pc += sizeof(uint32_t);
+  int64_t* new_ds = vm->env->native_registry.items[idx].fn(sp);
   if (new_ds == NULL) { // Check for errors
     fprintf(stderr, "Error: native function returned NULL\n");
     exit(1);

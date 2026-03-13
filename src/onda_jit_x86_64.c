@@ -28,7 +28,8 @@ size_t onda_jit_x86_64(const uint8_t* bytecode,
                        int64_t* data_sp,
                        int64_t* frame_bp,
                        uint8_t** out_machine_code,
-                       size_t* out_machine_code_size) {
+                       size_t* out_machine_code_size,
+                       const onda_native_registry_t* reg) {
   size_t bcode_pos = 0;
   uint8_t* mcode = onda_malloc(ONDA_MCODE_INIT_CAP);
   int32_t* bcode_to_mcode = onda_malloc(bytecode_size * sizeof(int32_t));
@@ -601,9 +602,9 @@ size_t onda_jit_x86_64(const uint8_t* bytecode,
     } break;
 
     case ONDA_OP_CALL_NATIVE: {
-      uint64_t fn_addr;
-      memcpy(&fn_addr, &bytecode[bcode_pos], sizeof(uint64_t));
-      bcode_pos += sizeof(uint64_t);
+      uint32_t idx; memcpy(&idx, &bytecode[bcode_pos], sizeof(uint32_t));
+      bcode_pos += sizeof(uint32_t);
+      uint64_t fn_addr = (uint64_t)(uintptr_t)reg->items[idx].fn;
       EMIT_STORE_FRAME_LOCAL((2 + 0) * 8, 0);
       EMIT_STORE_FRAME_LOCAL((2 + 1) * 8, 1);
       EMIT_STORE_FRAME_LOCAL((2 + 2) * 8, 2);

@@ -3,6 +3,7 @@
 
 #include "onda_config.h"
 #include "onda_dict.h"
+#include "onda_env.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -69,6 +70,7 @@ typedef struct onda_vm {
   int64_t frame_stack[ONDA_FRAME_STACK_SIZE];
   int64_t* sp;
   bool debug_mode;
+  onda_env_t* env;
 } onda_vm_t;
 
 // Allocate a new VM

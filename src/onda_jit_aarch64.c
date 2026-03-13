@@ -115,7 +115,8 @@ size_t onda_jit_aarch64(const uint8_t* bytecode,
                         int64_t* data_sp,
                         int64_t* frame_bp,
                         uint8_t** out_machine_code,
-                        size_t* out_machine_code_size) {
+                        size_t* out_machine_code_size,
+                        const onda_native_registry_t* reg) {
   size_t bcode_pos = 0;
   uint32_t* mcode = onda_malloc(ONDA_MCODE_INIT_CAP * sizeof(uint32_t));
   int32_t* bcode_to_mcode = onda_malloc(bytecode_size * sizeof(int32_t));
@@ -476,9 +477,9 @@ size_t onda_jit_aarch64(const uint8_t* bytecode,
       // put ds in x0 as argument to native function
       EMIT(AA64_MOV(0, DS_REG));
       // load native function address into x3 and call
-      uint64_t fn_addr;
-      memcpy(&fn_addr, &bytecode[bcode_pos], sizeof(onda_native_fn_cb_t));
-      bcode_pos += sizeof(uint64_t);
+      uint32_t idx; memcpy(&idx, &bytecode[bcode_pos], sizeof(uint32_t));
+      bcode_pos += sizeof(uint32_t);
+      uint64_t fn_addr = (uint64_t)(uintptr_t)reg->items[idx].fn;
       EMIT(AA64_MOVZ(3, (fn_addr >> 0) & 0xFFFF, 0));
       EMIT(AA64_MOVK(3, (fn_addr >> 16) & 0xFFFF, 16));
       EMIT(AA64_MOVK(3, (fn_addr >> 32) & 0xFFFF, 32));

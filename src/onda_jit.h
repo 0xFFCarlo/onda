@@ -1,6 +1,8 @@
 #ifndef ONDA_JIT_H
 #define ONDA_JIT_H
 
+#include "onda_env.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -11,6 +13,7 @@ int onda_jit_compile(const uint8_t* bytecode,
                      int64_t* data_sp,
                      int64_t* frame_bp,
                      uint8_t** out_machine_code,
-                     size_t* out_machine_code_size);
+                     size_t* out_machine_code_size,
+                     const onda_native_registry_t* reg);
 
 #endif // ONDA_JIT_H

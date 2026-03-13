@@ -977,9 +977,8 @@ static int onda_compile_expr(onda_lexer_t* lexer,
                       tok.len,
                       &func_id) == 0) {
       CODE_PUSH_OPCODE(ONDA_OP_CALL_NATIVE);
-      uint64_t func =
-          (uint64_t)(uintptr_t)env->native_registry.items[func_id].fn;
-      CODE_PUSH_BYTES(&func, sizeof(uint64_t));
+      uint32_t idx = (uint32_t)func_id;
+      CODE_PUSH_BYTES(&idx, sizeof(uint32_t));
       return 0;
     }
 

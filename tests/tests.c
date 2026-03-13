@@ -420,7 +420,8 @@ int main() {
                      data_sp,
                      frame_bp,
                      &machine_code,
-                     &machine_code_size);
+                     &machine_code_size,
+                     &env.native_registry);
     uint64_t tos = onda_jit_run(machine_code, machine_code_size);
     if (tc->stack_size > 0) {
       if (tos != tc->expected_result_a) {
