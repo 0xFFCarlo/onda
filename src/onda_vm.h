@@ -42,6 +42,7 @@ typedef enum onda_op_type {
   ONDA_OP_PUSH_CONST_U8,
   ONDA_OP_PUSH_CONST_U32,
   ONDA_OP_PUSH_CONST_U64,
+  ONDA_OP_PUSH_CONST_POOL_PTR_U32,
   ONDA_OP_PUSH_LOCAL,
   ONDA_OP_STORE_LOCAL,
   ONDA_OP_INC_LOCAL,
@@ -77,7 +78,9 @@ onda_vm_t* onda_vm_new(void);
 int onda_vm_load_code(onda_vm_t* vm,
                       const uint8_t* code,
                       const size_t entry_pc,
-                      const size_t code_size);
+                      const size_t code_size,
+                      const uint8_t* const_pool,
+                      const size_t const_pool_size);
 
 // Print the VM bytecode in human readable format
 void onda_vm_print_bytecode(const uint8_t* code, size_t code_size);

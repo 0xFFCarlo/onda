@@ -75,6 +75,10 @@ typedef struct {
   size_t capacity;
   // Program entry point in bytecode, set to 0 if not defined or to main word
   size_t entry_pc;
+  // Constant data pool referenced by bytecode offsets.
+  uint8_t* const_pool;
+  size_t const_pool_size;
+  size_t const_pool_capacity;
   // Mapping of word names to their definitions
   onda_dict_t words_map;
   // Word definitions

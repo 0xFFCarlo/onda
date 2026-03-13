@@ -292,6 +292,20 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
       EMITV(0x48, 0xB8); // mov rax, imm64
       EMIT_IMM64(val);
     } break;
+    case ONDA_OP_PUSH_CONST_POOL_PTR_U32: {
+      uint32_t offset = 0;
+      memcpy(&offset, &bytecode[bcode_pos], sizeof(uint32_t));
+      bcode_pos += sizeof(uint32_t);
+      if (!rt->const_pool || offset >= rt->const_pool_size) {
+        printf("Error: Constant pool offset out of bounds in x86_64 JIT\n");
+        return -1;
+      }
+      const uint64_t val =
+          (uint64_t)(uintptr_t)(rt->const_pool + (size_t)offset);
+      EMIT_PUSH_RAX_DS;
+      EMITV(0x48, 0xB8); // mov rax, imm64
+      EMIT_IMM64(val);
+    } break;
 
     case ONDA_OP_PUSH_LOCAL: {
       const uint8_t local_id = bytecode[bcode_pos++];

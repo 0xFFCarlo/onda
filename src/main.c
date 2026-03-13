@@ -36,6 +36,8 @@ int main(int argc, char* argv[]) {
       .code = cobj.code,
       .code_size = cobj.size,
       .entry_pc = cobj.entry_pc,
+      .const_pool = cobj.const_pool,
+      .const_pool_size = cobj.const_pool_size,
       .native_registry = &env.native_registry,
   };
   onda_runtime_reset(&rt);
@@ -52,7 +54,12 @@ int main(int argc, char* argv[]) {
 #else
   // Execute program in VM, starting from entry_pc
   onda_vm_t* vm = onda_vm_new();
-  onda_vm_load_code(vm, cobj.code, cobj.entry_pc, cobj.size);
+  onda_vm_load_code(vm,
+                    cobj.code,
+                    cobj.entry_pc,
+                    cobj.size,
+                    cobj.const_pool,
+                    cobj.const_pool_size);
   vm->env = &env;
   printf("Executing with VM:\n");
   vm->debug_mode = true;

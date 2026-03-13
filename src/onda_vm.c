@@ -18,14 +18,25 @@ onda_vm_t* onda_vm_new(void) {
 int onda_vm_load_code(onda_vm_t* vm,
                       const uint8_t* code,
                       const size_t entry_pc,
-                      const size_t code_size) {
+                      const size_t code_size,
+                      const uint8_t* const_pool,
+                      const size_t const_pool_size) {
   if (vm->runtime.code)
     onda_free((void*)vm->runtime.code);
+  if (vm->runtime.const_pool)
+    onda_free((void*)vm->runtime.const_pool);
   uint8_t* code_buf = onda_malloc(code_size);
   memcpy(code_buf, code, code_size);
+  uint8_t* const_pool_buf = NULL;
+  if (const_pool_size > 0) {
+    const_pool_buf = onda_malloc(const_pool_size);
+    memcpy(const_pool_buf, const_pool, const_pool_size);
+  }
   vm->runtime.code = code_buf;
   vm->runtime.code_size = code_size;
   vm->runtime.entry_pc = entry_pc;
+  vm->runtime.const_pool = const_pool_buf;
+  vm->runtime.const_pool_size = const_pool_size;
   return 0;
 }
 
@@ -52,6 +63,7 @@ static const char* opcode_to_str[ONDA_OP_COUNT] = {
     [ONDA_OP_PUSH_CONST_U8] = "PUSH_CONST_U8",
     [ONDA_OP_PUSH_CONST_U32] = "PUSH_CONST_U32",
     [ONDA_OP_PUSH_CONST_U64] = "PUSH_CONST_U64",
+    [ONDA_OP_PUSH_CONST_POOL_PTR_U32] = "PUSH_CONST_POOL_PTR_U32",
     [ONDA_OP_PUSH_LOCAL] = "PUSH_FROM_LOCAL",
     [ONDA_OP_STORE_LOCAL] = "STORE_TO_LOCAL",
     [ONDA_OP_INC_LOCAL] = "INC_LOCAL",
@@ -79,6 +91,7 @@ static const uint8_t opcode_args_byte[ONDA_OP_COUNT] = {
     [ONDA_OP_PUSH_CONST_U8] = sizeof(uint8_t),
     [ONDA_OP_PUSH_CONST_U32] = sizeof(uint32_t),
     [ONDA_OP_PUSH_CONST_U64] = sizeof(uint64_t),
+    [ONDA_OP_PUSH_CONST_POOL_PTR_U32] = sizeof(uint32_t),
     [ONDA_OP_PUSH_LOCAL] = sizeof(uint8_t),
     [ONDA_OP_STORE_LOCAL] = sizeof(uint8_t),
     [ONDA_OP_ADD_CONST_I8] = sizeof(int8_t),
@@ -170,6 +183,7 @@ int onda_vm_run(onda_vm_t* vm) {
       [ONDA_OP_PUSH_CONST_U8] = &&op_push_const_u8,
       [ONDA_OP_PUSH_CONST_U32] = &&op_push_const_u32,
       [ONDA_OP_PUSH_CONST_U64] = &&op_push_const_u64,
+      [ONDA_OP_PUSH_CONST_POOL_PTR_U32] = &&op_push_const_pool_ptr_u32,
       [ONDA_OP_PUSH_LOCAL] = &&op_push_from_local,
       [ONDA_OP_STORE_LOCAL] = &&op_store_to_local,
       [ONDA_OP_INC_LOCAL] = &&op_inc_local,
@@ -291,6 +305,18 @@ op_push_const_u64:
   sp--;
   *sp = (int64_t)tmp;
   DISPATCH();
+op_push_const_pool_ptr_u32: {
+  uint32_t offset = 0;
+  memcpy(&offset, &vm->runtime.code[pc], sizeof(uint32_t));
+  pc += sizeof(uint32_t);
+  if (!vm->runtime.const_pool || offset >= vm->runtime.const_pool_size) {
+    fprintf(stderr, "Error: constant pool offset out of bounds\n");
+    exit(1);
+  }
+  sp--;
+  *sp = (int64_t)(uintptr_t)(vm->runtime.const_pool + offset);
+  DISPATCH();
+}
 op_push_from_local : {
   uint8_t local_id = vm->runtime.code[pc++];
   sp--;
@@ -422,5 +448,7 @@ op_ret:
 void onda_vm_free(onda_vm_t* vm) {
   if (vm->runtime.code)
     onda_free((void*)vm->runtime.code);
+  if (vm->runtime.const_pool)
+    onda_free((void*)vm->runtime.const_pool);
   onda_free(vm);
 }

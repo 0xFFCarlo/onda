@@ -249,6 +249,28 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
       if (hi1)
         EMIT(AA64_MOVK(0, hi1, 48));
     } break;
+    case ONDA_OP_PUSH_CONST_POOL_PTR_U32: {
+      uint32_t offset = 0;
+      uint64_t val;
+      memcpy(&offset, &bytecode[bcode_pos], sizeof(uint32_t));
+      bcode_pos += sizeof(uint32_t);
+      if (!rt->const_pool || offset >= rt->const_pool_size) {
+        printf("Error: Constant pool offset out of bounds in aarch64 JIT\n");
+        return -1;
+      }
+      val = (uint64_t)(uintptr_t)(rt->const_pool + (size_t)offset);
+      lo0 = (uint16_t)((val >> 0) & 0xFFFFu);
+      hi0 = (uint16_t)((val >> 16) & 0xFFFFu);
+      lo1 = (uint16_t)((val >> 32) & 0xFFFFu);
+      hi1 = (uint16_t)((val >> 48) & 0xFFFFu);
+      EMIT2(AA64_PUSH_X0_STACK, AA64_MOVZ(0, lo0, 0));
+      if (hi0)
+        EMIT(AA64_MOVK(0, hi0, 16));
+      if (lo1)
+        EMIT(AA64_MOVK(0, lo1, 32));
+      if (hi1)
+        EMIT(AA64_MOVK(0, hi1, 48));
+    } break;
     case ONDA_OP_PUSH_LOCAL: {
       const uint8_t local_id = bytecode[bcode_pos++];
       EMIT(AA64_PUSH_X0_STACK);

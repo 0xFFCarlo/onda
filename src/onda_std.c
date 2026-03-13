@@ -291,6 +291,16 @@ static int64_t* onda_exit(int64_t* sp) {
   return sp + 1; // never reached
 }
 
+static int64_t* onda_assert(int64_t* sp) {
+  const char* msg = (const char*)(uintptr_t)(*sp);
+  const int64_t cond = *(sp + 1);
+  if (!cond) {
+    fprintf(stderr, "Assertion failed: %s\n", msg ? msg : "(null)");
+    exit(1);
+  }
+  return sp + 2;
+}
+
 static const onda_native_fn_t std_fns[] = {
     {".", 5, onda_print_u64, 1, 0},
     {".s", 5, onda_print_string, 1, 0},
@@ -337,6 +347,7 @@ static const onda_native_fn_t std_fns[] = {
     {"remove", 6, onda_remove, 1, 1},
     {"rename", 6, onda_rename, 2, 1},
     {"exit", 4, onda_exit, 1, 0},
+    {"assert", 6, onda_assert, 2, 0},
 };
 
 int onda_env_register_std(onda_env_t* env) {

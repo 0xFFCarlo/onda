@@ -11,6 +11,8 @@ typedef struct onda_runtime {
   const uint8_t* code;
   size_t code_size;
   size_t entry_pc;
+  const uint8_t* const_pool;
+  size_t const_pool_size;
 
   int64_t data_stack[ONDA_DATA_STACK_SIZE];
   int64_t frame_stack[ONDA_FRAME_STACK_SIZE];

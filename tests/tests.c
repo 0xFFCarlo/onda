@@ -247,6 +247,8 @@ static const test_case_t tests[] = {
     {"\"123\" atoi ret", 1, 123},
     {"\"2a\" 16 strtol ret", 1, 42},
     {"\"2a\" 16 strtoul ret", 1, 42},
+    // assert(cond,msg) consumes args and continues when cond is true
+    {"1 \"assert should not fail\" assert 7 ret", 1, 7},
 
     //===================
     // Large constants (exercise PUSH_CONST_U32 / PUSH_CONST_U64 paths)
@@ -332,7 +334,12 @@ int main() {
       goto failed;
     }
     // onda_dict_free(&cobj.words_map);
-    onda_vm_load_code(vm, cobj.code, cobj.entry_pc, cobj.size);
+    onda_vm_load_code(vm,
+                      cobj.code,
+                      cobj.entry_pc,
+                      cobj.size,
+                      cobj.const_pool,
+                      cobj.const_pool_size);
     vm->debug_mode = tc->debug_mode;
     onda_vm_run(vm);
     const size_t stack_size =
@@ -416,6 +423,8 @@ int main() {
         .code = cobj.code,
         .code_size = cobj.size,
         .entry_pc = cobj.entry_pc,
+        .const_pool = cobj.const_pool,
+        .const_pool_size = cobj.const_pool_size,
         .native_registry = &env.native_registry,
     };
     onda_runtime_reset(&rt);

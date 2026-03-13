@@ -321,6 +321,35 @@ static inline void code_recent_trim(onda_code_obj_t* cobj, size_t new_size) {
     code_recent_push(cobj, (op), cobj->size - 1);                              \
   } while (0)
 
+static inline int code_pool_push_string(onda_code_obj_t* cobj,
+                                        const char* str,
+                                        size_t str_len,
+                                        uint32_t* out_offset) {
+  const size_t size_needed = str_len + 1;
+  if (cobj->const_pool_size + size_needed > UINT32_MAX) {
+    fprintf(stderr, "Constant pool overflow\n");
+    return -1;
+  }
+  if (cobj->const_pool_size + size_needed > cobj->const_pool_capacity) {
+    size_t new_capacity =
+        cobj->const_pool_capacity ? cobj->const_pool_capacity * 2 : 256;
+    while (new_capacity < cobj->const_pool_size + size_needed)
+      new_capacity *= 2;
+    uint8_t* new_pool = onda_realloc(cobj->const_pool, new_capacity);
+    if (!new_pool) {
+      fprintf(stderr, "Failed to allocate constant pool\n");
+      return -1;
+    }
+    cobj->const_pool = new_pool;
+    cobj->const_pool_capacity = new_capacity;
+  }
+  *out_offset = (uint32_t)cobj->const_pool_size;
+  memcpy(cobj->const_pool + cobj->const_pool_size, str, str_len);
+  cobj->const_pool[cobj->const_pool_size + str_len] = '\0';
+  cobj->const_pool_size += size_needed;
+  return 0;
+}
+
 // Create new scope and push onto code object's scope stack
 static inline void onda_scope_push(onda_code_obj_t* code) {
   onda_scope_t* new_scope = (onda_scope_t*)onda_malloc(sizeof(onda_scope_t));
@@ -1000,14 +1029,11 @@ static int onda_compile_expr(onda_lexer_t* lexer,
     }
     break;
   case TOKEN_STRING: {
-    // TODO: constants should be stored in the
-    // bytecode somehow
-    char* str_data = onda_malloc(tok.len + 1);
-    memcpy(str_data, tok.start, tok.len);
-    str_data[tok.len] = '\0';
-    CODE_PUSH_OPCODE(ONDA_OP_PUSH_CONST_U64);
-    const uint64_t addr = (uint64_t)(uintptr_t)str_data;
-    CODE_PUSH_BYTES(&addr, sizeof(uint64_t));
+    uint32_t offset = 0;
+    if (code_pool_push_string(cobj, tok.start, tok.len, &offset) != 0)
+      return -1;
+    CODE_PUSH_OPCODE(ONDA_OP_PUSH_CONST_POOL_PTR_U32);
+    CODE_PUSH_BYTES(&offset, sizeof(uint32_t));
     break;
   }
   case TOKEN_EOF:
@@ -1140,6 +1166,9 @@ int onda_code_obj_init(onda_code_obj_t* cobj, size_t initial_capacity) {
   cobj->size = 0;
   cobj->capacity = initial_capacity;
   cobj->entry_pc = 0;
+  cobj->const_pool = NULL;
+  cobj->const_pool_size = 0;
+  cobj->const_pool_capacity = 0;
   onda_dict_init(&cobj->words_map);
   onda_dict_init(&cobj->aliases_map);
   cobj->words = NULL;
@@ -1155,6 +1184,8 @@ int onda_code_obj_init(onda_code_obj_t* cobj, size_t initial_capacity) {
 void onda_code_obj_free(onda_code_obj_t* cobj) {
   if (cobj->code)
     onda_free(cobj->code);
+  if (cobj->const_pool)
+    onda_free(cobj->const_pool);
   onda_dict_free(&cobj->words_map);
   onda_dict_free(&cobj->aliases_map);
   if (cobj->words)
