@@ -109,14 +109,15 @@ typedef struct onda_unresolved_jump_t {
   uint8_t jump_type;
 } onda_unresolved_jump_t;
 
-size_t onda_jit_aarch64(const uint8_t* bytecode,
-                        const size_t bytecode_entry_pc,
-                        size_t bytecode_size,
-                        int64_t* data_sp,
-                        int64_t* frame_bp,
+size_t onda_jit_aarch64(const onda_runtime_t* rt,
                         uint8_t** out_machine_code,
-                        size_t* out_machine_code_size,
-                        const onda_native_registry_t* reg) {
+                        size_t* out_machine_code_size) {
+  const uint8_t* bytecode = rt->code;
+  const size_t bytecode_entry_pc = rt->entry_pc;
+  const size_t bytecode_size = rt->code_size;
+  int64_t* data_sp = rt->data_sp;
+  int64_t* frame_bp = rt->frame_bp;
+  const onda_native_registry_t* reg = rt->native_registry;
   size_t bcode_pos = 0;
   uint32_t* mcode = onda_malloc(ONDA_MCODE_INIT_CAP * sizeof(uint32_t));
   int32_t* bcode_to_mcode = onda_malloc(bytecode_size * sizeof(int32_t));

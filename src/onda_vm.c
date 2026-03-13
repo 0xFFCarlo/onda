@@ -10,6 +10,8 @@
 
 onda_vm_t* onda_vm_new(void) {
   onda_vm_t* vm = onda_calloc(1, sizeof(onda_vm_t));
+  onda_runtime_reset(&vm->runtime);
+  vm->sp = vm->runtime.data_sp;
   return vm;
 }
 
@@ -17,12 +19,13 @@ int onda_vm_load_code(onda_vm_t* vm,
                       const uint8_t* code,
                       const size_t entry_pc,
                       const size_t code_size) {
-  if (vm->code)
-    onda_free(vm->code);
-  vm->code = onda_malloc(code_size);
-  memcpy(vm->code, code, code_size);
-  vm->code_size = code_size;
-  vm->entry_pc = entry_pc;
+  if (vm->runtime.code)
+    onda_free((void*)vm->runtime.code);
+  uint8_t* code_buf = onda_malloc(code_size);
+  memcpy(code_buf, code, code_size);
+  vm->runtime.code = code_buf;
+  vm->runtime.code_size = code_size;
+  vm->runtime.entry_pc = entry_pc;
   return 0;
 }
 
@@ -106,23 +109,23 @@ static void debug_step(onda_vm_t* vm,
                        size_t pc,
                        int64_t* sp,
                        int64_t* frame_bp) {
-  uint8_t opcode = vm->code[pc];
+  uint8_t opcode = vm->runtime.code[pc];
   printf("PC: %04zu, DS_SIZE: %04zu, FBP: %04zu, Opcode: %s\n",
          pc,
-         vm->data_stack + ONDA_DATA_STACK_SIZE - sp,
-         (vm->frame_stack + ONDA_FRAME_STACK_SIZE) - frame_bp,
+         vm->runtime.data_stack + ONDA_DATA_STACK_SIZE - sp,
+         (vm->runtime.frame_stack + ONDA_FRAME_STACK_SIZE) - frame_bp,
          opcode_to_str[opcode]);
   printf("DS: {");
-  for (int64_t* data = sp; data < vm->data_stack + ONDA_DATA_STACK_SIZE;
+  for (int64_t* data = sp; data < vm->runtime.data_stack + ONDA_DATA_STACK_SIZE;
        data++) {
     printf("%lld", *data);
-    if (data < vm->data_stack + ONDA_DATA_STACK_SIZE - 1)
+    if (data < vm->runtime.data_stack + ONDA_DATA_STACK_SIZE - 1)
       printf(", ");
   }
   printf("}\n");
   printf("FS: {");
   size_t frame_size;
-  if (frame_bp == vm->frame_stack + ONDA_FRAME_STACK_SIZE) {
+  if (frame_bp == vm->runtime.frame_stack + ONDA_FRAME_STACK_SIZE) {
     frame_size = 2;
   } else {
     frame_size = (int64_t*)frame_bp[1] - frame_bp;
@@ -137,9 +140,12 @@ static void debug_step(onda_vm_t* vm,
 #endif
 
 int onda_vm_run(onda_vm_t* vm) {
-  size_t pc = vm->entry_pc;
-  int64_t* frame_bp = vm->frame_stack + ONDA_FRAME_STACK_SIZE;
-  int64_t* sp = vm->data_stack + ONDA_DATA_STACK_SIZE;
+  size_t pc = vm->runtime.entry_pc;
+  onda_runtime_reset(&vm->runtime);
+  int64_t* frame_bp = vm->runtime.frame_bp;
+  int64_t* sp = vm->runtime.data_sp;
+  if (vm->env)
+    vm->runtime.native_registry = &vm->env->native_registry;
 
   static const void* dispatch_table[] = {
       [ONDA_OP_RET] = &&op_ret,
@@ -191,9 +197,9 @@ int onda_vm_run(onda_vm_t* vm) {
 #define DISPATCH()                                                             \
   if (vm->debug_mode)                                                          \
     debug_step(vm, pc, sp, frame_bp);                                          \
-  goto* dispatch_table[vm->code[pc++]];
+  goto* dispatch_table[vm->runtime.code[pc++]];
 #else
-#define DISPATCH() goto* dispatch_table[vm->code[pc++]];
+#define DISPATCH() goto* dispatch_table[vm->runtime.code[pc++]];
 #endif
 
   DISPATCH();
@@ -223,10 +229,10 @@ op_mod:
   *sp %= *(sp - 1);
   DISPATCH();
 op_add_const_i8:
-  *sp += (int8_t)vm->code[pc++];
+  *sp += (int8_t)vm->runtime.code[pc++];
   DISPATCH();
 op_mul_const_i8:
-  *sp *= (int8_t)vm->code[pc++];
+  *sp *= (int8_t)vm->runtime.code[pc++];
   DISPATCH();
 op_inc:
   (*sp)++;
@@ -271,37 +277,37 @@ op_gte:
   DISPATCH();
 op_push_const_u8:
   sp--;
-  *sp = (int8_t)vm->code[pc++];
+  *sp = (int8_t)vm->runtime.code[pc++];
   DISPATCH();
 op_push_const_u32:
-  memcpy(&tmp, &vm->code[pc], 4);
+  memcpy(&tmp, &vm->runtime.code[pc], 4);
   pc += 4;
   sp--;
   *sp = (int32_t)tmp;
   DISPATCH();
 op_push_const_u64:
-  memcpy(&tmp, &vm->code[pc], 8);
+  memcpy(&tmp, &vm->runtime.code[pc], 8);
   pc += 8;
   sp--;
   *sp = (int64_t)tmp;
   DISPATCH();
 op_push_from_local : {
-  uint8_t local_id = vm->code[pc++];
+  uint8_t local_id = vm->runtime.code[pc++];
   sp--;
   *sp = frame_bp[local_id];
   DISPATCH();
 }
 op_store_to_local : {
-  frame_bp[vm->code[pc++]] = *sp;
+  frame_bp[vm->runtime.code[pc++]] = *sp;
   sp++;
   DISPATCH();
 }
 op_inc_local : {
-  frame_bp[vm->code[pc++]]++;
+  frame_bp[vm->runtime.code[pc++]]++;
   DISPATCH();
 }
 op_dec_local : {
-  frame_bp[vm->code[pc++]]--;
+  frame_bp[vm->runtime.code[pc++]]--;
   DISPATCH();
 }
 op_push_from_addr_b:
@@ -355,11 +361,11 @@ op_drop:
   sp++;
   DISPATCH();
 op_jmp:
-  memcpy(&jmp_offset, &vm->code[pc], sizeof(int16_t));
+  memcpy(&jmp_offset, &vm->runtime.code[pc], sizeof(int16_t));
   pc += jmp_offset;
   DISPATCH();
 op_jmp_if_false:
-  memcpy(&jmp_offset, &vm->code[pc], sizeof(int16_t));
+  memcpy(&jmp_offset, &vm->runtime.code[pc], sizeof(int16_t));
   if (*sp == 0)
     pc += jmp_offset;
   else
@@ -368,9 +374,9 @@ op_jmp_if_false:
   DISPATCH();
 op_call : {
   int32_t branch_offset;
-  const uint8_t args = vm->code[pc++];
-  const uint8_t locals = vm->code[pc++];
-  memcpy(&branch_offset, &vm->code[pc], sizeof(int32_t));
+  const uint8_t args = vm->runtime.code[pc++];
+  const uint8_t locals = vm->runtime.code[pc++];
+  memcpy(&branch_offset, &vm->runtime.code[pc], sizeof(int32_t));
   pc += sizeof(int32_t);
   const int64_t* prev_bp = frame_bp;
   // reserve space for return address, previous bp and locals
@@ -386,9 +392,14 @@ op_call : {
 }
 op_call_native : {
   uint32_t idx;
-  memcpy(&idx, &vm->code[pc], sizeof(uint32_t));
+  memcpy(&idx, &vm->runtime.code[pc], sizeof(uint32_t));
   pc += sizeof(uint32_t);
-  int64_t* new_ds = vm->env->native_registry.items[idx].fn(sp);
+  const onda_native_registry_t* native_registry = vm->runtime.native_registry;
+  if (native_registry == NULL) {
+    fprintf(stderr, "Error: native function registry not set in VM\n");
+    exit(1);
+  }
+  int64_t* new_ds = native_registry->items[idx].fn(sp);
   if (new_ds == NULL) { // Check for errors
     fprintf(stderr, "Error: native function returned NULL\n");
     exit(1);
@@ -397,7 +408,9 @@ op_call_native : {
   DISPATCH();
 }
 op_ret:
-  if (frame_bp == vm->frame_stack + ONDA_FRAME_STACK_SIZE) {
+  if (frame_bp == vm->runtime.frame_stack + ONDA_FRAME_STACK_SIZE) {
+    vm->runtime.data_sp = sp;
+    vm->runtime.frame_bp = frame_bp;
     vm->sp = sp;
     return 0; // HALT
   }
@@ -407,7 +420,7 @@ op_ret:
 }
 
 void onda_vm_free(onda_vm_t* vm) {
-  if (vm->code)
-    onda_free(vm->code);
+  if (vm->runtime.code)
+    onda_free((void*)vm->runtime.code);
   onda_free(vm);
 }

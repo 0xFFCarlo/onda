@@ -32,18 +32,14 @@ int main(int argc, char* argv[]) {
   // Compile to machine code
   uint8_t* machine_code = NULL;
   size_t machine_code_size = 0;
-  int64_t frame_stack[ONDA_FRAME_STACK_SIZE];
-  int64_t data_stack[ONDA_DATA_STACK_SIZE];
-  int64_t* frame_bp = frame_stack + ONDA_FRAME_STACK_SIZE;
-  int64_t* data_sp = data_stack + ONDA_DATA_STACK_SIZE;
-  onda_jit_compile(cobj.code,
-                   cobj.entry_pc,
-                   cobj.size,
-                   data_sp,
-                   frame_bp,
-                   &machine_code,
-                   &machine_code_size,
-                   &env.native_registry);
+  onda_runtime_t rt = {
+      .code = cobj.code,
+      .code_size = cobj.size,
+      .entry_pc = cobj.entry_pc,
+      .native_registry = &env.native_registry,
+  };
+  onda_runtime_reset(&rt);
+  onda_jit_compile(&rt, &machine_code, &machine_code_size);
 
   // Execute program in JIT
   clock_gettime(CLOCK_MONOTONIC, &start);
@@ -63,7 +59,7 @@ int main(int argc, char* argv[]) {
   clock_gettime(CLOCK_MONOTONIC, &start);
   onda_vm_run(vm);
   clock_gettime(CLOCK_MONOTONIC, &end);
-  if (vm->sp < vm->data_stack + ONDA_DATA_STACK_SIZE) {
+  if (vm->sp < vm->runtime.data_stack + ONDA_DATA_STACK_SIZE) {
     uint64_t tos = *vm->sp;
     printf("Execution result (TOS): %" PRIu64 "\n", tos);
   } else {

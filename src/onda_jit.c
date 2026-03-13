@@ -72,32 +72,13 @@ uint64_t onda_jit_run(const uint8_t* machine_code, size_t machine_code_size) {
   return ret;
 }
 
-int onda_jit_compile(const uint8_t* bytecode,
-                     const size_t bytecode_entry_pc,
-                     size_t bytecode_size,
-                     int64_t* data_sp,
-                     int64_t* frame_bp,
+int onda_jit_compile(const onda_runtime_t* rt,
                      uint8_t** out_machine_code,
-                     size_t* out_machine_code_size,
-                     const onda_native_registry_t* reg) {
+                     size_t* out_machine_code_size) {
 #if defined(__aarch64__)
-  return onda_jit_aarch64(bytecode,
-                          bytecode_entry_pc,
-                          bytecode_size,
-                          data_sp,
-                          frame_bp,
-                          out_machine_code,
-                          out_machine_code_size,
-                          reg);
+  return onda_jit_aarch64(rt, out_machine_code, out_machine_code_size);
 #elif defined(__x86_64__)
-  return onda_jit_x86_64(bytecode,
-                         bytecode_entry_pc,
-                         bytecode_size,
-                         data_sp,
-                         frame_bp,
-                         out_machine_code,
-                         out_machine_code_size,
-                         reg);
+  return onda_jit_x86_64(rt, out_machine_code, out_machine_code_size);
 #else
   return -1; // JIT compilation not supported on this platform
 #endif

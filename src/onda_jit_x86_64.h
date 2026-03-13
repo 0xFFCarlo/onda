@@ -1,18 +1,13 @@
 #ifndef ONDA_JIT_X86_64_H
 #define ONDA_JIT_X86_64_H
 
-#include "onda_env.h"
+#include "onda_runtime.h"
 
 #include <stddef.h>
 #include <stdint.h>
 
-size_t onda_jit_x86_64(const uint8_t* bytecode,
-                       const size_t bytecode_entry_pc,
-                       size_t bytecode_size,
-                       int64_t* data_sp,
-                       int64_t* frame_bp,
+size_t onda_jit_x86_64(const onda_runtime_t* rt,
                        uint8_t** out_machine_code,
-                       size_t* out_machine_code_size,
-                       const onda_native_registry_t* reg);
+                       size_t* out_machine_code_size);
 
 #endif // ONDA_JIT_X86_64_H

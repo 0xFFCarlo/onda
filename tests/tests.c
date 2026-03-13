@@ -312,10 +312,9 @@ int main() {
   onda_vm_t* vm = onda_vm_new();
   uint8_t* machine_code = NULL;
   size_t machine_code_size = 0;
-  int64_t frame_stack[ONDA_FRAME_STACK_SIZE];
-  int64_t data_stack[ONDA_DATA_STACK_SIZE];
   onda_env_init(&env);
   onda_env_register_std(&env);
+  vm->env = &env;
 
   // Run tests using VM
   printf("Testing with VM:\n");
@@ -336,7 +335,8 @@ int main() {
     onda_vm_load_code(vm, cobj.code, cobj.entry_pc, cobj.size);
     vm->debug_mode = tc->debug_mode;
     onda_vm_run(vm);
-    const size_t stack_size = vm->data_stack + ONDA_DATA_STACK_SIZE - vm->sp;
+    const size_t stack_size =
+        vm->runtime.data_stack + ONDA_DATA_STACK_SIZE - vm->sp;
     if (stack_size != tc->stack_size) {
       fprintf(stderr,
               "Test %zu failed: expected stack size %zu, got %zu\n",
@@ -412,16 +412,14 @@ int main() {
       goto failed;
     }
     // JIT test
-    int64_t* frame_bp = frame_stack + ONDA_FRAME_STACK_SIZE;
-    int64_t* data_sp = data_stack + ONDA_DATA_STACK_SIZE;
-    onda_jit_compile(cobj.code,
-                     cobj.entry_pc,
-                     cobj.size,
-                     data_sp,
-                     frame_bp,
-                     &machine_code,
-                     &machine_code_size,
-                     &env.native_registry);
+    onda_runtime_t rt = {
+        .code = cobj.code,
+        .code_size = cobj.size,
+        .entry_pc = cobj.entry_pc,
+        .native_registry = &env.native_registry,
+    };
+    onda_runtime_reset(&rt);
+    onda_jit_compile(&rt, &machine_code, &machine_code_size);
     uint64_t tos = onda_jit_run(machine_code, machine_code_size);
     if (tc->stack_size > 0) {
       if (tos != tc->expected_result_a) {

@@ -4,6 +4,7 @@
 #include "onda_config.h"
 #include "onda_dict.h"
 #include "onda_env.h"
+#include "onda_runtime.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -63,11 +64,7 @@ typedef enum onda_op_type {
 } onda_op_type_t;
 
 typedef struct onda_vm {
-  uint8_t* code;
-  size_t code_size;
-  size_t entry_pc;
-  int64_t data_stack[ONDA_DATA_STACK_SIZE];
-  int64_t frame_stack[ONDA_FRAME_STACK_SIZE];
+  onda_runtime_t runtime;
   int64_t* sp;
   bool debug_mode;
   onda_env_t* env;
