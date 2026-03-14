@@ -1,3 +1,6 @@
 bin/**
 *.json
 node_modules/**
+
+CLAUDE.md
+AGENTS.md

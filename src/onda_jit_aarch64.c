@@ -43,12 +43,12 @@
 #define AA64_CMP_X0_0       (0xF100001F) // cmp x0, #0
 #define AA64_CMP(n, m)      (0xEB00001Fu | (((m)&31u) << 16) | (((n)&31u) << 5))
 #define AA64_CSET_NE(rd)    (0x9A9F07E0 | ((rd)&31u)) // cset xD, ne
-#define AA64_CSET_X0_NE     (0x9A9F07E0) // cset x0, ne
-#define AA64_CSET_X0_EQ     (0x9A9F17E0) // cset x0, eq
-#define AA64_CSET_X0_LT     (0x9A9FA7E0) // cset x0, lt
-#define AA64_CSET_X0_GT     (0x9A9FD7E0) // cset x0, gt
-#define AA64_CSET_X0_LTE    (0x9A9FC7E0) // cset x0, le
-#define AA64_CSET_X0_GTE    (0x9A9FB7E0) // cset x0, ge
+#define AA64_CSET_X0_NE     (0x9A9F07E0)              // cset x0, ne
+#define AA64_CSET_X0_EQ     (0x9A9F17E0)              // cset x0, eq
+#define AA64_CSET_X0_LT     (0x9A9FA7E0)              // cset x0, lt
+#define AA64_CSET_X0_GT     (0x9A9FD7E0)              // cset x0, gt
+#define AA64_CSET_X0_LTE    (0x9A9FC7E0)              // cset x0, le
+#define AA64_CSET_X0_GTE    (0x9A9FB7E0)              // cset x0, ge
 // move 16-bit immediate into 64-bit register and zero other bits
 #define AA64_MOVZ(dst, imm16, shift)                                           \
   (0xD2800000 | (((shift) / 16) << 21) | ((uint32_t)(imm16) << 5) | (dst))
@@ -256,7 +256,7 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
       bcode_pos += sizeof(uint32_t);
       if (!rt->const_pool || offset >= rt->const_pool_size) {
         printf("Error: Constant pool offset out of bounds in aarch64 JIT\n");
-        return -1;
+        goto jit_fail;
       }
       val = (uint64_t)(uintptr_t)(rt->const_pool + (size_t)offset);
       lo0 = (uint16_t)((val >> 0) & 0xFFFFu);
@@ -370,18 +370,18 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
       break;
     case ONDA_OP_AND:
       EMIT(AA64_POP_STACK(1));
-      EMIT(AA64_CMP(1, 31));  // x1 != 0
-      EMIT(AA64_CSET_NE(1));  // x1 = x1 != 0
-      EMIT(AA64_CMP_X0_0);    // x0 != 0
-      EMIT(AA64_CSET_X0_NE);  // x0 = x0 != 0
+      EMIT(AA64_CMP(1, 31));   // x1 != 0
+      EMIT(AA64_CSET_NE(1));   // x1 = x1 != 0
+      EMIT(AA64_CMP_X0_0);     // x0 != 0
+      EMIT(AA64_CSET_X0_NE);   // x0 = x0 != 0
       EMIT(AA64_AND(0, 1, 0)); // x0 = x1 && x0
       break;
     case ONDA_OP_OR:
       EMIT(AA64_POP_STACK(1));
-      EMIT(AA64_CMP(1, 31));  // x1 != 0
-      EMIT(AA64_CSET_NE(1));  // x1 = x1 != 0
-      EMIT(AA64_CMP_X0_0);    // x0 != 0
-      EMIT(AA64_CSET_X0_NE);  // x0 = x0 != 0
+      EMIT(AA64_CMP(1, 31));   // x1 != 0
+      EMIT(AA64_CSET_NE(1));   // x1 = x1 != 0
+      EMIT(AA64_CMP_X0_0);     // x0 != 0
+      EMIT(AA64_CSET_X0_NE);   // x0 = x0 != 0
       EMIT(AA64_ORR(0, 1, 0)); // x0 = x1 || x0
       break;
     case ONDA_OP_EQ:
@@ -500,7 +500,8 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
       // put ds in x0 as argument to native function
       EMIT(AA64_MOV(0, DS_REG));
       // load native function address into x3 and call
-      uint32_t idx; memcpy(&idx, &bytecode[bcode_pos], sizeof(uint32_t));
+      uint32_t idx;
+      memcpy(&idx, &bytecode[bcode_pos], sizeof(uint32_t));
       bcode_pos += sizeof(uint32_t);
       uint64_t fn_addr = (uint64_t)(uintptr_t)reg->items[idx].fn;
       EMIT(AA64_MOVZ(3, (fn_addr >> 0) & 0xFFFF, 0));
@@ -536,7 +537,7 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
         EMIT(AA64_SUBI(FS_REG, FS_REG, frame_bytes));
       } else {
         printf("Error: frame too large for SUBI immediate\n");
-        return -1;
+        goto jit_fail;
       }
 
       for (uint8_t i = 0; i < ONDA_LOCAL_REG_COUNT; i++) {
@@ -616,22 +617,25 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
   // Error unresolved jumps
   if (unresolved_jumps) {
     printf("Error: Unresolved jumps remain after compilation.\n");
-    // Free unresolved jumps
-    onda_unresolved_jump_t* uj = unresolved_jumps;
-    while (uj) {
-      onda_unresolved_jump_t* next = uj->next;
-      onda_free(uj);
-      uj = next;
-    }
-    onda_free(mcode);
-    onda_free(bcode_to_mcode);
-    return -1;
+    goto jit_fail;
   }
 
+  onda_free(bcode_to_mcode);
   *out_machine_code = (uint8_t*)mcode;
   *out_machine_code_size = mcode_size * sizeof(uint32_t);
 
   return 0;
+jit_fail : {
+  onda_unresolved_jump_t* uj = unresolved_jumps;
+  while (uj) {
+    onda_unresolved_jump_t* next = uj->next;
+    onda_free(uj);
+    uj = next;
+  }
+  onda_free(mcode);
+  onda_free(bcode_to_mcode);
+  return -1;
+}
 }
 
 #endif // defined(__aarch64__)
