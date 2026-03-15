@@ -7,8 +7,8 @@ BINDIR ?= $(PREFIX)/bin
 
 all:
 	mkdir -p bin
-	gcc -g -O0 -Wall -Wextra -Wstrict-prototypes -Wmissing-prototypes -Wwrite-strings -Wundef -Wimplicit-fallthrough -Wnull-dereference $(SRC) -o bin/ondac
-	gcc -g -O0 -Wall $(SRC_NO_MAIN) $(TESTS) -o bin/tests_ondac
+	gcc -g -O3 -Wall -Wextra -Wstrict-prototypes -Wmissing-prototypes -Wwrite-strings -Wundef -Wimplicit-fallthrough -Wnull-dereference $(SRC) -o bin/ondac
+	gcc -g -O3 -Wall $(SRC_NO_MAIN) $(TESTS) -o bin/tests_ondac
 
 install: all
 	mkdir -p $(BINDIR)

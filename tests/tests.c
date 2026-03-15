@@ -325,6 +325,7 @@ static const test_case_t tests[] = {
 static const char* compile_fail_tests[] = {
     "::bad ( a ) a ; :main 1 bad ;",
     "::bad 1 -> x ; :main bad ;",
+    ": foo 1 ; : main ( foo ) foo ;",
 };
 
 int main() {

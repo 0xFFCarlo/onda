@@ -714,14 +714,14 @@ static inline const onda_imm_word_t* find_imm_word(const char* name,
   return NULL;
 }
 
-static int validate_symbol_name(onda_lexer_t* lexer,
-                                onda_code_obj_t* cobj,
-                                const onda_token_t* tok,
-                                bool is_alias) {
+static int validate_name_availability(onda_lexer_t* lexer,
+                                      onda_code_obj_t* cobj,
+                                      const onda_token_t* tok,
+                                      const char* symbol_kind) {
   if (tok->len >= ONDA_MAX_WORD_NAME_LEN) {
     print_err(lexer,
               "%s name '%.*s' exceeds max length of %d",
-              is_alias ? "Alias" : "Word",
+              symbol_kind,
               tok->len,
               tok->start,
               ONDA_MAX_WORD_NAME_LEN - 1);
@@ -731,7 +731,7 @@ static int validate_symbol_name(onda_lexer_t* lexer,
   if (find_imm_word(tok->start, tok->len)) {
     print_err(lexer,
               "%s name '%.*s' conflicts with immediate word name\n",
-              is_alias ? "Alias" : "Word",
+              symbol_kind,
               tok->len,
               tok->start);
     return -1;
@@ -740,24 +740,30 @@ static int validate_symbol_name(onda_lexer_t* lexer,
   uint64_t id;
   if (onda_dict_get(&cobj->words_map, tok->start, tok->len, &id) == 0) {
     print_err(lexer,
-              is_alias
-                  ? "Alias name '%.*s' conflicts with word name\n"
-                  : "Word name '%.*s' already defined\n",
+              "%s name '%.*s' conflicts with word name\n",
+              symbol_kind,
               tok->len,
               tok->start);
     return -1;
   }
   if (onda_dict_get(&cobj->aliases_map, tok->start, tok->len, &id) == 0) {
     print_err(lexer,
-              is_alias
-                  ? "Alias name '%.*s' already defined\n"
-                  : "Word name '%.*s' conflicts with alias name\n",
+              "%s name '%.*s' conflicts with alias name\n",
+              symbol_kind,
               tok->len,
               tok->start);
     return -1;
   }
 
   return 0;
+}
+
+static int validate_symbol_name(onda_lexer_t* lexer,
+                                onda_code_obj_t* cobj,
+                                const onda_token_t* tok,
+                                bool is_alias) {
+  return validate_name_availability(
+      lexer, cobj, tok, is_alias ? "Alias" : "Word");
 }
 
 static int onda_compile_word(onda_lexer_t* lexer,
@@ -811,6 +817,8 @@ static int onda_compile_word(onda_lexer_t* lexer,
         return -1;
       }
       onda_token_next(lexer, &tok); // consume argument name
+      if (validate_name_availability(lexer, cobj, &tok, "Local") != 0)
+        return -1;
       if (onda_scope_set(cobj, tok.start, tok.len, word.locals_count++) != 0) {
         print_err(
             lexer,
