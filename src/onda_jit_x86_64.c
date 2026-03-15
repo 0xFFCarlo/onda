@@ -373,6 +373,31 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
       EMITV(0x48, 0xF7, 0xF9); // idiv rcx
       EMITV(0x48, 0x89, 0xD0); // mov rax, rdx (remainder)
       break;
+    case ONDA_OP_SHIFT_LEFT:
+      EMITV(0x48, 0x89, 0xC1); // mov rcx, rax (shift amount)
+      EMIT_POP_DS_RAX;         // rax = value
+      EMITV(0x48, 0xD3, 0xE0); // shl rax, cl
+      break;
+    case ONDA_OP_SHIFT_RIGHT:
+      EMITV(0x48, 0x89, 0xC1); // mov rcx, rax (shift amount)
+      EMIT_POP_DS_RAX;         // rax = value
+      EMITV(0x48, 0xD3, 0xF8); // sar rax, cl
+      break;
+    case ONDA_OP_BITWISE_AND:
+      EMIT_POP_DS_RCX;
+      EMITV(0x48, 0x21, 0xC8); // and rax, rcx
+      break;
+    case ONDA_OP_BITWISE_OR:
+      EMIT_POP_DS_RCX;
+      EMITV(0x48, 0x09, 0xC8); // or rax, rcx
+      break;
+    case ONDA_OP_BITWISE_XOR:
+      EMIT_POP_DS_RCX;
+      EMITV(0x48, 0x31, 0xC8); // xor rax, rcx
+      break;
+    case ONDA_OP_BITWISE_NOT:
+      EMITV(0x48, 0xF7, 0xD0); // not rax
+      break;
 
     case ONDA_OP_AND:
       EMIT_POP_DS_RCX;

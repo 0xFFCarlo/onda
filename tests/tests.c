@@ -54,6 +54,20 @@ static const test_case_t tests[] = {
 
     // --- MODULO (%)
     {"7 2 % ret", 1, 1},
+    // --- SHIFT LEFT (<<)
+    {"3 2 << ret", 1, 12},
+    // --- SHIFT RIGHT (>>)
+    {"8 2 >> ret", 1, 2},
+    // arithmetic right shift on negative numbers
+    {"0 8 - 2 >> ret", 1, -2},
+    // --- BITWISE AND (&)
+    {"6 3 & ret", 1, 2},
+    // --- BITWISE OR (|)
+    {"6 3 | ret", 1, 7},
+    // --- BITWISE XOR (^)
+    {"6 3 ^ ret", 1, 5},
+    // --- BITWISE NOT (~)
+    {"0 ~ ret", 1, -1},
 
     //===================
     // Logic operators
@@ -234,10 +248,17 @@ static const test_case_t tests[] = {
     //===================
     // C stdlib wrappers
     //===================
-    // Stack-effect regression checks
-    {"\"same\" \"same\" strcmp ret", 1, 0},
-    {"2 \"abd\" \"abc\" memcmp ret", 1, 0},
-    {"2 \"abd\" \"abc\" strncmp ret", 1, 0},
+    // Stack-order regression checks (C-order arguments, last arg on TOS)
+    {"\"a\" \"b\" strcmp 0 < ret", 1, 1},
+    {"\"ab\" \"aa\" 2 memcmp 0 > ret", 1, 1},
+    {"\"ab\" \"aa\" 2 strncmp 0 > ret", 1, 1},
+    {":cpy1 ( | dst src ) 1 16 calloc -> dst 1 16 calloc -> src "
+     "65 src b! "
+     "dst src 1 memcpy "
+     "dst b@ ; "
+     ":main cpy1 ;",
+     1,
+     65},
 
     // String search helpers
     {"\"hello\" dup 101 strchr swap 1 + == ret", 1, 1},

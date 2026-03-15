@@ -51,6 +51,12 @@ static const char* opcode_to_str[ONDA_OP_COUNT] = {
     [ONDA_OP_MUL_CONST_I8] = "MUL_CONST_I8",
     [ONDA_OP_INC] = "INC",
     [ONDA_OP_DEC] = "DEC",
+    [ONDA_OP_SHIFT_LEFT] = "SHIFT_LEFT",
+    [ONDA_OP_SHIFT_RIGHT] = "SHIFT_RIGHT",
+    [ONDA_OP_BITWISE_AND] = "BITWISE_AND",
+    [ONDA_OP_BITWISE_OR] = "BITWISE_OR",
+    [ONDA_OP_BITWISE_XOR] = "BITWISE_XOR",
+    [ONDA_OP_BITWISE_NOT] = "BITWISE_NOT",
     [ONDA_OP_AND] = "AND",
     [ONDA_OP_OR] = "OR",
     [ONDA_OP_NOT] = "NOT",
@@ -171,6 +177,12 @@ int onda_vm_run(onda_vm_t* vm) {
       [ONDA_OP_MUL_CONST_I8] = &&op_mul_const_i8,
       [ONDA_OP_INC] = &&op_inc,
       [ONDA_OP_DEC] = &&op_dec,
+      [ONDA_OP_SHIFT_LEFT] = &&op_shift_left,
+      [ONDA_OP_SHIFT_RIGHT] = &&op_shift_right,
+      [ONDA_OP_BITWISE_AND] = &&op_bitwise_and,
+      [ONDA_OP_BITWISE_OR] = &&op_bitwise_or,
+      [ONDA_OP_BITWISE_XOR] = &&op_bitwise_xor,
+      [ONDA_OP_BITWISE_NOT] = &&op_bitwise_not,
       [ONDA_OP_AND] = &&op_and,
       [ONDA_OP_OR] = &&op_or,
       [ONDA_OP_NOT] = &&op_not,
@@ -254,6 +266,29 @@ op_inc:
 op_dec:
   (*sp)--;
   DISPATCH();
+op_shift_left:
+  sp++;
+  *sp <<= *(sp - 1);
+  DISPATCH();
+op_shift_right:
+  sp++;
+  *sp >>= *(sp - 1);
+  DISPATCH();
+op_bitwise_and:
+  sp++;
+  *sp &= *(sp - 1);
+  DISPATCH();
+op_bitwise_or:
+  sp++;
+  *sp |= *(sp - 1);
+  DISPATCH();
+op_bitwise_xor:
+  sp++;
+  *sp ^= *(sp - 1);
+  DISPATCH();
+op_bitwise_not:
+  *sp = ~*sp;
+  DISPATCH();
 op_and:
   sp++;
   *sp = *sp && *(sp - 1);
@@ -305,7 +340,7 @@ op_push_const_u64:
   sp--;
   *sp = (int64_t)tmp;
   DISPATCH();
-op_push_const_pool_ptr_u32: {
+op_push_const_pool_ptr_u32 : {
   uint32_t offset = 0;
   memcpy(&offset, &vm->runtime.code[pc], sizeof(uint32_t));
   pc += sizeof(uint32_t);

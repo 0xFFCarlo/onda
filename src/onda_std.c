@@ -8,19 +8,19 @@
 
 static int64_t* onda_print_u64(int64_t* sp) {
   uint64_t x = (uint64_t)(*sp);
-  printf("%" PRIu64 "\n", x);
+  printf("%" PRIu64, x);
   return sp + 1;
 }
 
 static int64_t* onda_print_i64(int64_t* sp) {
   int64_t x = *sp;
-  printf("%" PRId64 "\n", x);
+  printf("%" PRId64, x);
   return sp + 1;
 }
 
 static int64_t* onda_print_hex(int64_t* sp) {
   uint64_t x = (uint64_t)(*sp);
-  printf("0x%" PRIx64 "\n", x);
+  printf("0x%" PRIx64, x);
   return sp + 1;
 }
 
@@ -49,8 +49,8 @@ static int64_t* onda_malloc(int64_t* sp) {
 }
 
 static int64_t* onda_calloc(int64_t* sp) {
-  const size_t num = (size_t)(*sp);
-  const size_t size = (size_t)(*(sp + 1));
+  const size_t num = (size_t)(*(sp + 1));
+  const size_t size = (size_t)(*sp);
   *(sp + 1) = (int64_t)(uintptr_t)calloc(num, size);
   return sp + 1;
 }
@@ -62,32 +62,32 @@ static int64_t* onda_free(int64_t* sp) {
 }
 
 static int64_t* onda_realloc(int64_t* sp) {
-  void* ptr = (void*)(uintptr_t)(*sp);
-  size_t new_size = (size_t)(*(sp + 1));
+  void* ptr = (void*)(uintptr_t)(*(sp + 1));
+  size_t new_size = (size_t)(*sp);
   *(sp + 1) = (int64_t)(uintptr_t)realloc(ptr, new_size);
   return sp + 1;
 }
 
 static int64_t* onda_memcpy(int64_t* sp) {
-  void* dest = (void*)(uintptr_t)(*sp);
+  void* dest = (void*)(uintptr_t)(*(sp + 2));
   void* src = (void*)(uintptr_t)(*(sp + 1));
-  size_t n = (size_t)(*(sp + 2));
+  size_t n = (size_t)(*sp);
   memcpy(dest, src, n);
   return sp + 3;
 }
 
 static int64_t* onda_memset(int64_t* sp) {
-  void* dest = (void*)(uintptr_t)(*sp);
+  void* dest = (void*)(uintptr_t)(*(sp + 2));
   int value = (int)(*(sp + 1));
-  size_t n = (size_t)(*(sp + 2));
+  size_t n = (size_t)(*sp);
   memset(dest, value, n);
   return sp + 3;
 }
 
 static int64_t* onda_memcmp(int64_t* sp) {
-  void* ptr1 = (void*)(uintptr_t)(*sp);
+  void* ptr1 = (void*)(uintptr_t)(*(sp + 2));
   void* ptr2 = (void*)(uintptr_t)(*(sp + 1));
-  size_t n = (size_t)(*(sp + 2));
+  size_t n = (size_t)(*sp);
   int result = memcmp(ptr1, ptr2, n);
   *(sp + 2) = (int64_t)result;
   return sp + 2;
@@ -100,48 +100,48 @@ static int64_t* onda_strlen(int64_t* sp) {
 }
 
 static int64_t* onda_strcmp(int64_t* sp) {
-  char* str1 = (char*)(uintptr_t)(*sp);
-  char* str2 = (char*)(uintptr_t)(*(sp + 1));
+  char* str1 = (char*)(uintptr_t)(*(sp + 1));
+  char* str2 = (char*)(uintptr_t)(*sp);
   int result = strcmp(str1, str2);
   *(sp + 1) = (int64_t)result;
   return sp + 1;
 }
 
 static int64_t* onda_strncmp(int64_t* sp) {
-  char* str1 = (char*)(uintptr_t)(*sp);
+  char* str1 = (char*)(uintptr_t)(*(sp + 2));
   char* str2 = (char*)(uintptr_t)(*(sp + 1));
-  size_t n = (size_t)(*(sp + 2));
+  size_t n = (size_t)(*sp);
   int result = strncmp(str1, str2, n);
   *(sp + 2) = (int64_t)result;
   return sp + 2;
 }
 
 static int64_t* onda_strcpy(int64_t* sp) {
-  char* dest = (char*)(uintptr_t)(*sp);
-  char* src = (char*)(uintptr_t)(*(sp + 1));
+  char* dest = (char*)(uintptr_t)(*(sp + 1));
+  char* src = (char*)(uintptr_t)(*sp);
   strcpy(dest, src);
   return sp + 2;
 }
 
 static int64_t* onda_strncpy(int64_t* sp) {
-  char* dest = (char*)(uintptr_t)(*sp);
+  char* dest = (char*)(uintptr_t)(*(sp + 2));
   char* src = (char*)(uintptr_t)(*(sp + 1));
-  size_t n = (size_t)(*(sp + 2));
+  size_t n = (size_t)(*sp);
   strncpy(dest, src, n);
   return sp + 3;
 }
 
 static int64_t* onda_strcat(int64_t* sp) {
-  char* dest = (char*)(uintptr_t)(*sp);
-  char* src = (char*)(uintptr_t)(*(sp + 1));
+  char* dest = (char*)(uintptr_t)(*(sp + 1));
+  char* src = (char*)(uintptr_t)(*sp);
   strcat(dest, src);
   return sp + 2;
 }
 
 static int64_t* onda_strncat(int64_t* sp) {
-  char* dest = (char*)(uintptr_t)(*sp);
+  char* dest = (char*)(uintptr_t)(*(sp + 2));
   char* src = (char*)(uintptr_t)(*(sp + 1));
-  size_t n = (size_t)(*(sp + 2));
+  size_t n = (size_t)(*sp);
   strncat(dest, src, n);
   return sp + 3;
 }
@@ -280,11 +280,6 @@ static int64_t* onda_strtoul(int64_t* sp) {
   return sp + 1;
 }
 
-static int64_t* onda_nl(int64_t* sp) {
-  putchar('\n');
-  return sp;
-}
-
 static int64_t* onda_exit(int64_t* sp) {
   int64_t code = *sp;
   exit((int)code);
@@ -312,7 +307,6 @@ static const onda_native_fn_t std_fns[] = {
     {"print_char", 10, onda_print_char, 1, 0},
     {"print_str", 9, onda_print_string, 1, 0},
     {"emit", 4, onda_print_char, 1, 0},
-    {"nl", 2, onda_nl, 0, 0},
     {"malloc", 6, onda_malloc, 1, 1},
     {"calloc", 6, onda_calloc, 2, 1},
     {"free", 4, onda_free, 1, 0},

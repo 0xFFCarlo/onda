@@ -228,8 +228,6 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
     return tok1(lexer, t, TOKEN_LPAREN);
   case ')':
     return tok1(lexer, t, TOKEN_RPAREN);
-  case '|':
-    return tok1(lexer, t, TOKEN_SEPARATOR);
   case '"': {
     int rc = lex_string(lexer, &t->start, &t->len);
     if (rc) {
@@ -665,6 +663,12 @@ static const onda_imm_word_t imm_words[] = {
     {"%", ONDA_OP_MOD, .handler = NULL},
     {"++", ONDA_OP_INC, .handler = NULL},
     {"--", ONDA_OP_DEC, .handler = NULL},
+    {"<<", ONDA_OP_SHIFT_LEFT, .handler = NULL},
+    {">>", ONDA_OP_SHIFT_RIGHT, .handler = NULL},
+    {"&", ONDA_OP_BITWISE_AND, .handler = NULL},
+    {"|", ONDA_OP_BITWISE_OR, .handler = NULL},
+    {"^", ONDA_OP_BITWISE_XOR, .handler = NULL},
+    {"~", ONDA_OP_BITWISE_NOT, .handler = NULL},
     {"not", ONDA_OP_NOT, .handler = NULL},
     {"==", ONDA_OP_EQ, .handler = NULL},
     {"!=", ONDA_OP_NEQ, .handler = NULL},
@@ -773,8 +777,8 @@ static int onda_compile_word(onda_lexer_t* lexer,
       if (tok.type == TOKEN_RPAREN) {
         onda_token_next(lexer, &tok); // consume ')'
         break;
-      }
-      if (tok.type == TOKEN_SEPARATOR) {
+      } else if (tok.type == TOKEN_IDENTIFIER && tok.len == 1 &&
+                 tok.start[0] == '|') {
         onda_token_next(lexer, &tok); // consume '|'
         is_argument_section = false;
         continue;
@@ -893,9 +897,7 @@ static int onda_compile_alias(onda_lexer_t* lexer,
       break;
     }
     if (tok.type == TOKEN_LPAREN || tok.type == TOKEN_RPAREN ||
-        tok.type == TOKEN_SEPARATOR ||
-        (tok.type == TOKEN_IDENTIFIER && tok.len == 2 &&
-         strncmp(tok.start, "->", 2) == 0)) {
+        (tok.type == TOKEN_IDENTIFIER && tok.len == 1 && tok.start[0] == '|')) {
       print_err(lexer,
                 "Alias '%.*s' cannot declare arguments or local variables\n",
                 (int)alias.name_len,

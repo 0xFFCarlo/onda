@@ -39,7 +39,10 @@
 #define AA64_DEC_X0         (0xD1000400) // sub x0, x0, #1
 #define AA64_AND(dst, a, b) (0x8A000000 | ((b) << 16) | ((a) << 5) | dst)
 #define AA64_ORR(dst, a, b) (0xAA000000 | ((b) << 16) | ((a) << 5) | dst)
+#define AA64_EOR(dst, a, b) (0xCA000000 | ((b) << 16) | ((a) << 5) | dst)
 #define AA64_NOT_X0_X0      (0xAA2003E0) // orn x0, x0, xzr
+#define AA64_LSLV(dst, a, b) (0x9AC02000 | ((b) << 16) | ((a) << 5) | dst)
+#define AA64_ASRV(dst, a, b) (0x9AC02800 | ((b) << 16) | ((a) << 5) | dst)
 #define AA64_CMP_X0_0       (0xF100001F) // cmp x0, #0
 #define AA64_CMP(n, m)      (0xEB00001Fu | (((m)&31u) << 16) | (((n)&31u) << 5))
 #define AA64_CSET_NE(rd)    (0x9A9F07E0 | ((rd)&31u)) // cset xD, ne
@@ -367,6 +370,24 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
       break;
     case ONDA_OP_MOD:
       EMIT3(AA64_POP_STACK(1), AA64_SDIV(2, 1, 0), AA64_MSUB(0, 2, 0, 1));
+      break;
+    case ONDA_OP_SHIFT_LEFT:
+      EMIT2(AA64_POP_STACK(1), AA64_LSLV(0, 1, 0));
+      break;
+    case ONDA_OP_SHIFT_RIGHT:
+      EMIT2(AA64_POP_STACK(1), AA64_ASRV(0, 1, 0));
+      break;
+    case ONDA_OP_BITWISE_AND:
+      EMIT2(AA64_POP_STACK(1), AA64_AND(0, 1, 0));
+      break;
+    case ONDA_OP_BITWISE_OR:
+      EMIT2(AA64_POP_STACK(1), AA64_ORR(0, 1, 0));
+      break;
+    case ONDA_OP_BITWISE_XOR:
+      EMIT2(AA64_POP_STACK(1), AA64_EOR(0, 1, 0));
+      break;
+    case ONDA_OP_BITWISE_NOT:
+      EMIT(AA64_NOT_X0_X0);
       break;
     case ONDA_OP_AND:
       EMIT(AA64_POP_STACK(1));

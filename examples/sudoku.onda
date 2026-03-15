@@ -1,0 +1,84 @@
+
+: print_board ( board | i j )
+  "Board:\n" .s
+  0 -> i while i 9 < do
+    0 -> j while j 9 < do
+      board i 9 * j + + b@
+      if dup 0 == then drop "." .s else . end
+      " " .s
+      j ++ -> j
+    end
+    "\n" .s
+    i ++ -> i
+  end
+  "" .s
+;
+
+: load_sudoku ( filename | board fp i j cell char )
+  # Open file
+  filename "r" fopen -> fp
+  if fp not then "Error opening file\n" .s exit end
+
+  # Prepare board memory
+  9 9 * malloc -> board 
+  board 0 9 9 * memset
+  1 malloc -> char
+
+
+  # Read file into board
+  0 -> i while i 9 < do
+    0 -> j while j 9 < do
+      board i 9 * j + + -> cell # cell = &board[i][j]
+      if char 1 1 fp fread not then "Error reading file\n" .s exit end
+      if char b@ 48 < char b@ 48 9 + > or then # Skip non-digit characters
+        continue
+      end
+      # Convert char to int and store in board
+      char b@ 48 - cell b!
+      j ++ -> j
+    end
+    i ++ -> i
+  end
+
+  # Close file and return board
+  char free
+  fp fclose
+  board
+;
+
+: update_pstates ( pstates_table i j num | x )
+  0 -> x while x 9 < do
+    # Mark number as not possible in the same column
+    pstates_table x 9 * j + 9 * num + 0 b!
+    # Mark number as not possible in the same row
+    pstates_table i 9 * x + 9 * num + 0 b!
+    x ++ -> x
+  end
+;
+
+: solve_sudoku ( board | i j is_solved cell pstates_table )
+  # Possibkle states
+  9 9 * 9 * malloc -> pstates_table
+  pstates_table 0 9 9 * 9 * memset
+
+  0 -> is_solved
+  while is_solved not do
+      # Find empty cell
+      1 -> is_solved
+      0 -> i while i 9 < do
+        0 -> j while j 9 < do
+          board i 9 * j + + -> cell
+          if cell b@ 0 == then
+            0 -> is_solved
+          else
+
+          end
+          j ++ -> j
+        end
+        i ++ -> i
+      end
+  end 
+;
+
+: main "sudoku.txt" load_sudoku dup print_board
+        solve_sudoku dup print_board free ;

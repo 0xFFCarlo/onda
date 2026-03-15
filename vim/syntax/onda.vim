@@ -26,7 +26,7 @@ syntax match ondaDefine /:/ nextgroup=ondaDefName skipwhite
 syntax match ondaDefName /\v[A-Za-z_][A-Za-z0-9_]*/ contained
 
 " --- Core language keywords / ops
-syntax keyword ondaKeyword and drop dup if then while do end not or over ret rot swap
+syntax keyword ondaKeyword and drop dup if else then while do end not or over ret rot swap
 syntax keyword ondaKeyword main
 syntax match   ondaKeyword /\v\.(s)?\>/
 syntax match   ondaKeyword /;/
