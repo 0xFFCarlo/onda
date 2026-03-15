@@ -1,4 +1,5 @@
 #include "onda_compiler.h"
+#include "onda_optimizer.h"
 
 #include "onda_dict.h"
 #include "onda_util.h"
@@ -271,27 +272,43 @@ static void onda_token_peek(onda_lexer_t* lexer, onda_token_t* t) {
   lexer->column = saved_column;
 }
 
-// Helper macros for emitting bytecode with bounds checking
-#define CODE_CHECK_SPACE(bytes_needed)                                         \
-  do {                                                                         \
-    if (cobj->size + (bytes_needed) > cobj->capacity) {                        \
-      fprintf(stderr, "Code buffer overflow\n");                               \
-      return -1;                                                               \
-    }                                                                          \
-  } while (0)
-#define CODE_PUSH_BYTE(val)                                                    \
-  CODE_CHECK_SPACE(1);                                                         \
-  cobj->code[cobj->size++] = (val)
-#define CODE_PUSH_BYTES(src, len)                                              \
-  do {                                                                         \
-    CODE_CHECK_SPACE(len);                                                     \
-    memcpy(&cobj->code[cobj->size], (src), (len));                             \
-    cobj->size += (len);                                                       \
-  } while (0)
+int onda_code_obj_reserve(onda_code_obj_t* cobj, size_t extra) {
+  if (cobj->size + extra <= cobj->capacity)
+    return 0;
 
-static inline void code_recent_push(onda_code_obj_t* cobj,
-                                    uint8_t opcode,
-                                    size_t opcode_pos) {
+  size_t new_capacity = cobj->capacity ? cobj->capacity * 2 : 256;
+  while (new_capacity < cobj->size + extra)
+    new_capacity *= 2;
+
+  uint8_t* new_code = onda_realloc(cobj->code, new_capacity);
+  if (!new_code)
+    return -1;
+
+  cobj->code = new_code;
+  cobj->capacity = new_capacity;
+  return 0;
+}
+
+int onda_code_obj_emit_u8(onda_code_obj_t* cobj, uint8_t value) {
+  if (onda_code_obj_reserve(cobj, 1) != 0)
+    return -1;
+  cobj->code[cobj->size++] = value;
+  return 0;
+}
+
+int onda_code_obj_emit_bytes(onda_code_obj_t* cobj,
+                             const void* src,
+                             size_t len) {
+  if (onda_code_obj_reserve(cobj, len) != 0)
+    return -1;
+  memcpy(&cobj->code[cobj->size], src, len);
+  cobj->size += len;
+  return 0;
+}
+
+void onda_code_obj_recent_push(onda_code_obj_t* cobj,
+                               uint8_t opcode,
+                               size_t opcode_pos) {
   if (cobj->recent_opcode_count < 3) {
     const uint8_t idx = cobj->recent_opcode_count++;
     cobj->recent_opcodes[idx] = opcode;
@@ -306,17 +323,43 @@ static inline void code_recent_push(onda_code_obj_t* cobj,
   cobj->recent_opcode_pos[2] = opcode_pos;
 }
 
-static inline void code_recent_trim(onda_code_obj_t* cobj, size_t new_size) {
+void onda_code_obj_recent_trim(onda_code_obj_t* cobj, size_t new_size) {
   while (cobj->recent_opcode_count > 0 &&
          cobj->recent_opcode_pos[cobj->recent_opcode_count - 1] >= new_size) {
     cobj->recent_opcode_count--;
   }
 }
 
+int onda_code_obj_emit_opcode(onda_code_obj_t* cobj, uint8_t opcode) {
+  const size_t opcode_pos = cobj->size;
+  if (onda_code_obj_emit_u8(cobj, opcode) != 0)
+    return -1;
+  onda_code_obj_recent_push(cobj, opcode, opcode_pos);
+  return 0;
+}
+
+#define CODE_PUSH_BYTE(val)                                                    \
+  do {                                                                         \
+    if (onda_code_obj_emit_u8(cobj, (uint8_t)(val)) != 0) {                   \
+      fprintf(stderr, "Code buffer overflow\n");                               \
+      return -1;                                                               \
+    }                                                                          \
+  } while (0)
+
+#define CODE_PUSH_BYTES(src, len)                                              \
+  do {                                                                         \
+    if (onda_code_obj_emit_bytes(cobj, (src), (len)) != 0) {                  \
+      fprintf(stderr, "Code buffer overflow\n");                               \
+      return -1;                                                               \
+    }                                                                          \
+  } while (0)
+
 #define CODE_PUSH_OPCODE(op)                                                   \
   do {                                                                         \
-    CODE_PUSH_BYTE((op));                                                      \
-    code_recent_push(cobj, (op), cobj->size - 1);                              \
+    if (onda_code_obj_emit_opcode(cobj, (op)) != 0) {                         \
+      fprintf(stderr, "Code buffer overflow\n");                               \
+      return -1;                                                               \
+    }                                                                          \
   } while (0)
 
 static inline int code_pool_push_string(onda_code_obj_t* cobj,
@@ -560,49 +603,10 @@ static int onda_compile_store_local(onda_lexer_t* lexer,
     return -1;
   }
   const uint8_t local_slot = local_id + ONDA_LOCALS_BASE_OFF;
-  // Try to fold into previous push local + inc/dec if possible
-  if (cobj->recent_opcode_count >= 2 &&
-      cobj->recent_opcodes[cobj->recent_opcode_count - 2] ==
-          ONDA_OP_PUSH_LOCAL) {
-    const size_t push_pos =
-        cobj->recent_opcode_pos[cobj->recent_opcode_count - 2];
-    const uint8_t last_op = cobj->recent_opcodes[cobj->recent_opcode_count - 1];
-    if (cobj->code[push_pos + 1] == local_slot && last_op == ONDA_OP_INC) {
-      cobj->size = push_pos;
-      code_recent_trim(cobj, cobj->size);
-      CODE_PUSH_OPCODE(ONDA_OP_INC_LOCAL);
-      CODE_PUSH_BYTE(local_slot);
-      return 0;
-    }
-    if (cobj->code[push_pos + 1] == local_slot && last_op == ONDA_OP_DEC) {
-      cobj->size = push_pos;
-      code_recent_trim(cobj, cobj->size);
-      CODE_PUSH_OPCODE(ONDA_OP_DEC_LOCAL);
-      CODE_PUSH_BYTE(local_slot);
-      return 0;
-    }
-  }
   CODE_PUSH_OPCODE(ONDA_OP_STORE_LOCAL);
   CODE_PUSH_BYTE(local_slot);
+  (void)onda_try_optimize(cobj);
   return 0;
-}
-
-static inline int code_try_fold_imm_arith(onda_code_obj_t* cobj,
-                                          uint8_t arith_opcode) {
-  if (cobj->recent_opcode_count < 1)
-    return 0;
-  if (cobj->recent_opcodes[cobj->recent_opcode_count - 1] !=
-      ONDA_OP_PUSH_CONST_U8) {
-    return 0;
-  }
-  const size_t push_pos =
-      cobj->recent_opcode_pos[cobj->recent_opcode_count - 1];
-  const uint8_t imm8 = cobj->code[push_pos + 1];
-  cobj->size = push_pos;
-  code_recent_trim(cobj, cobj->size);
-  CODE_PUSH_OPCODE(arith_opcode);
-  CODE_PUSH_BYTE(imm8);
-  return 1;
 }
 
 static int onda_compile_import(onda_lexer_t* lexer,
@@ -710,6 +714,52 @@ static inline const onda_imm_word_t* find_imm_word(const char* name,
   return NULL;
 }
 
+static int validate_symbol_name(onda_lexer_t* lexer,
+                                onda_code_obj_t* cobj,
+                                const onda_token_t* tok,
+                                bool is_alias) {
+  if (tok->len >= ONDA_MAX_WORD_NAME_LEN) {
+    print_err(lexer,
+              "%s name '%.*s' exceeds max length of %d",
+              is_alias ? "Alias" : "Word",
+              tok->len,
+              tok->start,
+              ONDA_MAX_WORD_NAME_LEN - 1);
+    return -1;
+  }
+
+  if (find_imm_word(tok->start, tok->len)) {
+    print_err(lexer,
+              "%s name '%.*s' conflicts with immediate word name\n",
+              is_alias ? "Alias" : "Word",
+              tok->len,
+              tok->start);
+    return -1;
+  }
+
+  uint64_t id;
+  if (onda_dict_get(&cobj->words_map, tok->start, tok->len, &id) == 0) {
+    print_err(lexer,
+              is_alias
+                  ? "Alias name '%.*s' conflicts with word name\n"
+                  : "Word name '%.*s' already defined\n",
+              tok->len,
+              tok->start);
+    return -1;
+  }
+  if (onda_dict_get(&cobj->aliases_map, tok->start, tok->len, &id) == 0) {
+    print_err(lexer,
+              is_alias
+                  ? "Alias name '%.*s' already defined\n"
+                  : "Word name '%.*s' conflicts with alias name\n",
+              tok->len,
+              tok->start);
+    return -1;
+  }
+
+  return 0;
+}
+
 static int onda_compile_word(onda_lexer_t* lexer,
                              onda_env_t* env,
                              onda_code_obj_t* cobj) {
@@ -720,38 +770,8 @@ static int onda_compile_word(onda_lexer_t* lexer,
     print_err(lexer, "Expected word name after ':'");
     return -1;
   }
-
-  if (tok.len >= ONDA_MAX_WORD_NAME_LEN) {
-    print_err(lexer,
-              "Word name '%.*s' exceeds max length of %d",
-              tok.len,
-              tok.start,
-              ONDA_MAX_WORD_NAME_LEN - 1);
-  }
-
-  // Check that word definition does not match any immediate word
-  if (find_imm_word(tok.start, tok.len)) {
-    print_err(lexer,
-              "Word name '%.*s' conflicts with immediate word name\n",
-              tok.len,
-              tok.start);
+  if (validate_symbol_name(lexer, cobj, &tok, false) != 0)
     return -1;
-  }
-
-  // Check that word definition does not already exists
-  uint64_t word_id;
-  if (onda_dict_get(&cobj->words_map, tok.start, tok.len, &word_id) == 0) {
-    print_err(lexer, "Word name '%.*s' already defined\n", tok.len, tok.start);
-    return -1;
-  }
-  uint64_t alias_id;
-  if (onda_dict_get(&cobj->aliases_map, tok.start, tok.len, &alias_id) == 0) {
-    print_err(lexer,
-              "Word name '%.*s' conflicts with alias name\n",
-              tok.len,
-              tok.start);
-    return -1;
-  }
 
   if (strncmp(tok.start, "main", tok.len) == 0)
     cobj->entry_pc = cobj->size;
@@ -846,37 +866,8 @@ static int onda_compile_alias(onda_lexer_t* lexer,
     print_err(lexer, "Expected alias name after '::'");
     return -1;
   }
-
-  if (tok.len >= ONDA_MAX_WORD_NAME_LEN) {
-    print_err(lexer,
-              "Alias name '%.*s' exceeds max length of %d",
-              tok.len,
-              tok.start,
-              ONDA_MAX_WORD_NAME_LEN - 1);
+  if (validate_symbol_name(lexer, cobj, &tok, true) != 0)
     return -1;
-  }
-
-  if (find_imm_word(tok.start, tok.len)) {
-    print_err(lexer,
-              "Alias name '%.*s' conflicts with immediate word name\n",
-              tok.len,
-              tok.start);
-    return -1;
-  }
-
-  uint64_t word_id;
-  if (onda_dict_get(&cobj->words_map, tok.start, tok.len, &word_id) == 0) {
-    print_err(lexer,
-              "Alias name '%.*s' conflicts with word name\n",
-              tok.len,
-              tok.start);
-    return -1;
-  }
-  uint64_t alias_id;
-  if (onda_dict_get(&cobj->aliases_map, tok.start, tok.len, &alias_id) == 0) {
-    print_err(lexer, "Alias name '%.*s' already defined\n", tok.len, tok.start);
-    return -1;
-  }
 
   strncpy(alias.name, tok.start, (size_t)tok.len);
   alias.name_len = (size_t)tok.len;
@@ -943,16 +934,8 @@ static int onda_compile_expr(onda_lexer_t* lexer,
     if (imm_word) {
       if (imm_word->handler)
         return imm_word->handler(lexer, env, cobj);
-      // Optimize certain patterns like "imm8 OP" into "OP_CONST_I8".
-      if (imm_word->opcode == ONDA_OP_ADD &&
-          code_try_fold_imm_arith(cobj, ONDA_OP_ADD_CONST_I8)) {
-        return 0;
-      }
-      if (imm_word->opcode == ONDA_OP_MUL &&
-          code_try_fold_imm_arith(cobj, ONDA_OP_MUL_CONST_I8)) {
-        return 0;
-      }
       CODE_PUSH_OPCODE(imm_word->opcode);
+      (void)onda_try_optimize(cobj);
       return 0;
     }
 

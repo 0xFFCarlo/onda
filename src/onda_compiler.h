@@ -102,6 +102,17 @@ typedef struct {
   uint8_t recent_opcode_count;
 } onda_code_obj_t;
 
+void onda_code_obj_recent_push(onda_code_obj_t* cobj,
+                               uint8_t opcode,
+                               size_t opcode_pos);
+void onda_code_obj_recent_trim(onda_code_obj_t* cobj, size_t new_size);
+int onda_code_obj_reserve(onda_code_obj_t* cobj, size_t extra);
+int onda_code_obj_emit_u8(onda_code_obj_t* cobj, uint8_t value);
+int onda_code_obj_emit_bytes(onda_code_obj_t* cobj,
+                             const void* src,
+                             size_t len);
+int onda_code_obj_emit_opcode(onda_code_obj_t* cobj, uint8_t opcode);
+
 // Get next token from the lexer
 void onda_token_next(onda_lexer_t* lexer, onda_token_t* out_token);
 

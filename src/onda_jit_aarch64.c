@@ -35,23 +35,23 @@
 #define AA64_MSUB(dst, n, m, a)                                                \
   (0x9B008000 | (((m)&31u) << 16) | (((a)&31u) << 10) | (((n)&31u) << 5) |     \
    ((dst)&31u))
-#define AA64_INC_X0         (0x91000400) // add x0, x0, #1
-#define AA64_DEC_X0         (0xD1000400) // sub x0, x0, #1
-#define AA64_AND(dst, a, b) (0x8A000000 | ((b) << 16) | ((a) << 5) | dst)
-#define AA64_ORR(dst, a, b) (0xAA000000 | ((b) << 16) | ((a) << 5) | dst)
-#define AA64_EOR(dst, a, b) (0xCA000000 | ((b) << 16) | ((a) << 5) | dst)
-#define AA64_NOT_X0_X0      (0xAA2003E0) // orn x0, x0, xzr
+#define AA64_INC_X0          (0x91000400) // add x0, x0, #1
+#define AA64_DEC_X0          (0xD1000400) // sub x0, x0, #1
+#define AA64_AND(dst, a, b)  (0x8A000000 | ((b) << 16) | ((a) << 5) | dst)
+#define AA64_ORR(dst, a, b)  (0xAA000000 | ((b) << 16) | ((a) << 5) | dst)
+#define AA64_EOR(dst, a, b)  (0xCA000000 | ((b) << 16) | ((a) << 5) | dst)
+#define AA64_NOT_X0_X0       (0xAA2003E0) // orn x0, x0, xzr
 #define AA64_LSLV(dst, a, b) (0x9AC02000 | ((b) << 16) | ((a) << 5) | dst)
 #define AA64_ASRV(dst, a, b) (0x9AC02800 | ((b) << 16) | ((a) << 5) | dst)
-#define AA64_CMP_X0_0       (0xF100001F) // cmp x0, #0
-#define AA64_CMP(n, m)      (0xEB00001Fu | (((m)&31u) << 16) | (((n)&31u) << 5))
-#define AA64_CSET_NE(rd)    (0x9A9F07E0 | ((rd)&31u)) // cset xD, ne
-#define AA64_CSET_X0_NE     (0x9A9F07E0)              // cset x0, ne
-#define AA64_CSET_X0_EQ     (0x9A9F17E0)              // cset x0, eq
-#define AA64_CSET_X0_LT     (0x9A9FA7E0)              // cset x0, lt
-#define AA64_CSET_X0_GT     (0x9A9FD7E0)              // cset x0, gt
-#define AA64_CSET_X0_LTE    (0x9A9FC7E0)              // cset x0, le
-#define AA64_CSET_X0_GTE    (0x9A9FB7E0)              // cset x0, ge
+#define AA64_CMP_X0_0        (0xF100001F) // cmp x0, #0
+#define AA64_CMP(n, m)       (0xEB00001Fu | (((m)&31u) << 16) | (((n)&31u) << 5))
+#define AA64_CSET_NE(rd)     (0x9A9F07E0 | ((rd)&31u)) // cset xD, ne
+#define AA64_CSET_X0_NE      (0x9A9F07E0)              // cset x0, ne
+#define AA64_CSET_X0_EQ      (0x9A9F17E0)              // cset x0, eq
+#define AA64_CSET_X0_LT      (0x9A9FA7E0)              // cset x0, lt
+#define AA64_CSET_X0_GT      (0x9A9FD7E0)              // cset x0, gt
+#define AA64_CSET_X0_LTE     (0x9A9FC7E0)              // cset x0, le
+#define AA64_CSET_X0_GTE     (0x9A9FB7E0)              // cset x0, ge
 // move 16-bit immediate into 64-bit register and zero other bits
 #define AA64_MOVZ(dst, imm16, shift)                                           \
   (0xD2800000 | (((shift) / 16) << 21) | ((uint32_t)(imm16) << 5) | (dst))
@@ -179,7 +179,7 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
     EMIT(AA64_MOVK(DS_REG, (dsp >> 48) & 0xFFFF, 48));
   }
   EMIT(AA64_STRU(30, FS_REG, 0)); // x30 (lr) -> frame[0] = return address
-  EMIT(AA64_STRU(31, FS_REG, 8)); // xzr -> frame[1] = 0
+  EMIT(AA64_STRU(31, FS_REG, 8)); // x31 (xzr) -> frame[1] = 0
 
   // Jump to start of program
   if (bytecode_entry_pc > 0)
@@ -365,6 +365,32 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
       }
       EMIT(AA64_MUL(0, 0, 1));
     } break;
+    case ONDA_OP_ADD_LOCAL: {
+      const uint8_t local_id = bytecode[bcode_pos++];
+      if (local_id >= ONDA_LOCALS_BASE_OFF &&
+          (local_id - ONDA_LOCALS_BASE_OFF) < ONDA_LOCAL_REG_COUNT) {
+        EMIT(AA64_ADD(0, 0, AA64_LOCAL_REG(local_id - ONDA_LOCALS_BASE_OFF)));
+      } else {
+        uint32_t off = (uint32_t)local_id * 8u;
+        if (local_id >= ONDA_LOCALS_BASE_OFF) {
+          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8u;
+        }
+        EMIT2(AA64_LDRU(1, FS_REG, off), AA64_ADD(0, 0, 1));
+      }
+    } break;
+    case ONDA_OP_MUL_LOCAL: {
+      const uint8_t local_id = bytecode[bcode_pos++];
+      if (local_id >= ONDA_LOCALS_BASE_OFF &&
+          (local_id - ONDA_LOCALS_BASE_OFF) < ONDA_LOCAL_REG_COUNT) {
+        EMIT(AA64_MUL(0, 0, AA64_LOCAL_REG(local_id - ONDA_LOCALS_BASE_OFF)));
+      } else {
+        uint32_t off = (uint32_t)local_id * 8u;
+        if (local_id >= ONDA_LOCALS_BASE_OFF) {
+          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8u;
+        }
+        EMIT2(AA64_LDRU(1, FS_REG, off), AA64_MUL(0, 0, 1));
+      }
+    } break;
     case ONDA_OP_DIV:
       EMIT2(AA64_POP_STACK(1), AA64_SDIV(0, 1, 0));
       break;
@@ -443,8 +469,7 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
         if (local_id >= ONDA_LOCALS_BASE_OFF) {
           off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8u;
         }
-        EMIT(AA64_LDRU(7, FS_REG, off));
-        EMIT(AA64_ADDI(7, 7, 1));
+        EMIT2(AA64_LDRU(7, FS_REG, off), AA64_ADDI(7, 7, 1));
         EMIT(AA64_STRU(7, FS_REG, off));
       }
     } break;
@@ -459,8 +484,7 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
         if (local_id >= ONDA_LOCALS_BASE_OFF) {
           off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8u;
         }
-        EMIT(AA64_LDRU(7, FS_REG, off));
-        EMIT(AA64_SUBI(7, 7, 1));
+        EMIT2(AA64_LDRU(7, FS_REG, off), AA64_SUBI(7, 7, 1));
         EMIT(AA64_STRU(7, FS_REG, off));
       }
     } break;
@@ -475,8 +499,7 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
       EMIT3(AA64_LOAD_STACK(1), AA64_PUSH_X0_STACK, AA64_MOV(0, 1));
       break;
     case ONDA_OP_ROT: // (a b c -- c a b)
-      EMIT(AA64_LOAD_STACK(1));
-      EMIT(AA64_LOAD_STACK(2));
+      EMIT2(AA64_LOAD_STACK(1), AA64_LOAD_STACK(2));
       EMIT(AA64_STRU(0, DS_REG, 8)); // str x0, [ds, #8]
       EMIT(AA64_STRU(2, DS_REG, 0)); // str x2, [ds, #0]
       EMIT(AA64_MOV(0, 1));
@@ -544,14 +567,8 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
       int32_t branch_offset;
       memcpy(&branch_offset, &bytecode[bcode_pos], 4);
       bcode_pos += sizeof(int32_t);
-      // - x6 store x20 (frame_bp)
-      // - x20 make room for 2 + locals elements
-      // - load arguments from data stack and store to frame stack
-      // - pop arguments from data stack
-      // - x20[1] store x6 (prev frame_bp)
-      // - x20[0] store return address in bytes
-      // - branch to function
-      EMIT(AA64_MOV(6, FS_REG));
+      EMIT(AA64_MOV(6, FS_REG)); // store frame pointer in x6
+      // make room for 2 + locals elements
       const uint32_t frame_bytes =
           (uint32_t)(2u + ONDA_LOCAL_REG_COUNT + locals) * 8u;
       if (frame_bytes <= 4095) {
@@ -561,26 +578,24 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
         goto jit_fail;
       }
 
-      for (uint8_t i = 0; i < ONDA_LOCAL_REG_COUNT; i++) {
+      // load arguments from data stack to local registers first
+      for (uint8_t i = 0; i < ONDA_LOCAL_REG_COUNT; i++)
         EMIT(AA64_STRU(AA64_LOCAL_REG(i), FS_REG, (2 + i) * 8));
-      }
 
       // Move arguments from data stack to frame stack
       for (int i = 0; i < argc; i++) {
         const int ds_j = argc - i - 1; // stack index (0=TOS in x0)
         if (ds_j == 0) {
-          if (i < ONDA_LOCAL_REG_COUNT) {
+          if (i < ONDA_LOCAL_REG_COUNT)
             EMIT(AA64_MOV(AA64_LOCAL_REG(i), 0));
-          } else {
+          else
             EMIT(AA64_STRU(0, FS_REG, (2 + ONDA_LOCAL_REG_COUNT + i) * 8));
-          }
         } else {
           EMIT(AA64_LDRU(7, DS_REG, (ds_j - 1) * 8));
-          if (i < ONDA_LOCAL_REG_COUNT) {
+          if (i < ONDA_LOCAL_REG_COUNT)
             EMIT(AA64_MOV(AA64_LOCAL_REG(i), 7));
-          } else {
+          else
             EMIT(AA64_STRU(7, FS_REG, (2 + ONDA_LOCAL_REG_COUNT + i) * 8));
-          }
         }
       }
       // Pop arguments from data stack
@@ -593,41 +608,31 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
         EMIT(AA64_ADDI(DS_REG, DS_REG, pop_bytes)); // sp += argc * 16
       }
 
-      EMIT(AA64_STRU(6, FS_REG, 1 * 8));
-      // address of next instruction after branch, in bytes
-      EMIT(AA64_ADR(6, 3 * 4));
-      EMIT(AA64_STRU(6, FS_REG, 0 * 8));
+      EMIT(AA64_STRU(6, FS_REG, 1 * 8)); // fs_stack[1] store x6 (prev frame_bp)
+      EMIT(AA64_ADR(6, 3 * 4)); // addr of instruction after branch, in bytes
+      EMIT(AA64_STRU(6, FS_REG, 0 * 8)); // fs_stack[0] store return address
       if (bcode_to_mcode[bcode_pos + branch_offset] == -1) {
         printf("Error: Unresolved jump for CALL at bytecode position %ld\n",
                bcode_pos);
       } else {
         const int32_t aa_jmp_offset =
             bcode_to_mcode[bcode_pos + branch_offset] - mcode_size;
-        EMIT(AA64_B(aa_jmp_offset));
+        EMIT(AA64_B(aa_jmp_offset)); // branch to function
       }
 
       break;
     }
     case ONDA_OP_RET:
-      // x30 = frame[0] (return address)
-      EMIT(AA64_LDRU(30, FS_REG, 0));
-
-      // x6 = frame[1] (previous frame_bp)
-      EMIT(AA64_LDRU(6, FS_REG, 8));
-
+      EMIT(AA64_LDRU(30, FS_REG, 0)); // x30 = frame[0] (return address)
+      EMIT(AA64_LDRU(6, FS_REG, 8));  // x6 = frame[1] (previous frame_bp)
       // if x6 == 0, jump to root-return path
       // +N instructions to skip over nested return path
       EMIT(AA64_CBZ(6, ONDA_LOCAL_REG_COUNT + 2));
-
       // normal nested return:
-      for (uint8_t i = 0; i < ONDA_LOCAL_REG_COUNT; i++) {
+      for (uint8_t i = 0; i < ONDA_LOCAL_REG_COUNT; i++)
         EMIT(AA64_LDRU(AA64_LOCAL_REG(i), FS_REG, (2 + i) * 8));
-      }
-      EMIT(AA64_MOV(FS_REG, 6));
-      EMIT(AA64_RET);
-
-      // root return to C which restores SP:
-      EMIT(AA64_RET);
+      EMIT2(AA64_MOV(FS_REG, 6), AA64_RET);
+      EMIT(AA64_RET); // root return to C which restores SP:
       break;
     default:
       printf("Error: Unknown opcode %02X\n", opcode);

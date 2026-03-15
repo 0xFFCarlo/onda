@@ -74,6 +74,8 @@ static const char* opcode_to_str[ONDA_OP_COUNT] = {
     [ONDA_OP_STORE_LOCAL] = "STORE_TO_LOCAL",
     [ONDA_OP_INC_LOCAL] = "INC_LOCAL",
     [ONDA_OP_DEC_LOCAL] = "DEC_LOCAL",
+    [ONDA_OP_ADD_LOCAL] = "ADD_LOCAL",
+    [ONDA_OP_MUL_LOCAL] = "MUL_LOCAL",
     [ONDA_OP_PUSH_FROM_ADDR_B] = "PUSH_FROM_ADDR_B",
     [ONDA_OP_STORE_TO_ADDR_B] = "STORE_TO_ADDR_B",
     [ONDA_OP_PUSH_FROM_ADDR_HW] = "PUSH_FROM_ADDR_Hw",
@@ -104,6 +106,8 @@ static const uint8_t opcode_args_byte[ONDA_OP_COUNT] = {
     [ONDA_OP_MUL_CONST_I8] = sizeof(int8_t),
     [ONDA_OP_INC_LOCAL] = sizeof(uint8_t),
     [ONDA_OP_DEC_LOCAL] = sizeof(uint8_t),
+    [ONDA_OP_ADD_LOCAL] = sizeof(uint8_t),
+    [ONDA_OP_MUL_LOCAL] = sizeof(uint8_t),
     [ONDA_OP_JUMP] = sizeof(int16_t),
     [ONDA_OP_JUMP_IF_FALSE] = sizeof(int16_t),
     [ONDA_OP_CALL] = sizeof(int32_t) + 2,
@@ -200,6 +204,8 @@ int onda_vm_run(onda_vm_t* vm) {
       [ONDA_OP_STORE_LOCAL] = &&op_store_to_local,
       [ONDA_OP_INC_LOCAL] = &&op_inc_local,
       [ONDA_OP_DEC_LOCAL] = &&op_dec_local,
+      [ONDA_OP_ADD_LOCAL] = &&op_add_local,
+      [ONDA_OP_MUL_LOCAL] = &&op_mul_local,
       [ONDA_OP_PUSH_FROM_ADDR_B] = &&op_push_from_addr_b,
       [ONDA_OP_STORE_TO_ADDR_B] = &&op_store_to_addr_b,
       [ONDA_OP_PUSH_FROM_ADDR_HW] = &&op_push_from_addr_hw,
@@ -369,6 +375,14 @@ op_inc_local : {
 }
 op_dec_local : {
   frame_bp[vm->runtime.code[pc++]]--;
+  DISPATCH();
+}
+op_add_local : {
+  *sp += frame_bp[vm->runtime.code[pc++]];
+  DISPATCH();
+}
+op_mul_local : {
+  *sp *= frame_bp[vm->runtime.code[pc++]];
   DISPATCH();
 }
 op_push_from_addr_b:

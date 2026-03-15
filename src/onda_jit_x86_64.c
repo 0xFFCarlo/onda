@@ -102,6 +102,14 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
     EMIT_IMM32(off);                                                           \
   }
 
+#define EMIT_LOAD_FRAME_RCX(off)                                               \
+  if ((off) <= 127) {                                                          \
+    EMITV(0x49, 0x8B, 0x4D, (uint8_t)(off));                                   \
+  } else {                                                                     \
+    EMITV(0x49, 0x8B, 0x8D);                                                   \
+    EMIT_IMM32(off);                                                           \
+  }
+
 // Emit mov [r13 + off], rax (store rax into frame slot)
 #define EMIT_STORE_FRAME_RAX(off)                                              \
   if ((off) <= 127) {                                                          \
@@ -151,6 +159,17 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
       EMITV(0x4C, 0x89, 0xC8);                                                 \
     } else {                                                                   \
       EMITV(0x4C, 0x89, 0xD0);                                                 \
+    }                                                                          \
+  } while (0)
+
+#define EMIT_MOV_RCX_FROM_LOCAL(idx)                                           \
+  do {                                                                         \
+    if ((idx) == 0) {                                                          \
+      EMITV(0x4C, 0x89, 0xC1);                                                 \
+    } else if ((idx) == 1) {                                                   \
+      EMITV(0x4C, 0x89, 0xC9);                                                 \
+    } else {                                                                   \
+      EMITV(0x4C, 0x89, 0xD1);                                                 \
     }                                                                          \
   } while (0)
 
@@ -358,6 +377,36 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
     case ONDA_OP_MUL_CONST_I8:
       EMITV(0x48, 0x6B, 0xC0, bytecode[bcode_pos++]); // imul rax, rax, imm8
       break;
+
+    case ONDA_OP_ADD_LOCAL: {
+      const uint8_t local_id = bytecode[bcode_pos++];
+      if (local_id >= ONDA_LOCALS_BASE_OFF &&
+          (local_id - ONDA_LOCALS_BASE_OFF) < ONDA_LOCAL_REG_COUNT) {
+        EMIT_MOV_RCX_FROM_LOCAL(local_id - ONDA_LOCALS_BASE_OFF);
+      } else {
+        uint32_t off = (uint32_t)local_id * 8;
+        if (local_id >= ONDA_LOCALS_BASE_OFF) {
+          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8;
+        }
+        EMIT_LOAD_FRAME_RCX(off);
+      }
+      EMITV(0x48, 0x01, 0xC8); // add rax, rcx
+    } break;
+
+    case ONDA_OP_MUL_LOCAL: {
+      const uint8_t local_id = bytecode[bcode_pos++];
+      if (local_id >= ONDA_LOCALS_BASE_OFF &&
+          (local_id - ONDA_LOCALS_BASE_OFF) < ONDA_LOCAL_REG_COUNT) {
+        EMIT_MOV_RCX_FROM_LOCAL(local_id - ONDA_LOCALS_BASE_OFF);
+      } else {
+        uint32_t off = (uint32_t)local_id * 8;
+        if (local_id >= ONDA_LOCALS_BASE_OFF) {
+          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8;
+        }
+        EMIT_LOAD_FRAME_RCX(off);
+      }
+      EMITV(0x48, 0x0F, 0xAF, 0xC1); // imul rax, rcx
+    } break;
 
     case ONDA_OP_DIV:
       EMITV(0x48, 0x89, 0xC1); // mov rcx, rax (save divisor)

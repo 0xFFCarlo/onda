@@ -49,9 +49,10 @@ static double elapsed_ms(const struct timespec* start,
 static void usage(const char* prog) {
   fprintf(stderr,
           "Usage:\n"
-          "  %s run [--no-jit] [--time] <source_file>\n"
-          "  %s build [--time] <source_file> <output_bytecode>\n"
-          "  %s exec [--no-jit] [--time] <bytecode_file>\n",
+          "  %s run [--no-jit] [--time] [--print-bytecode] <source_file>\n"
+          "  %s build [--time] [--print-bytecode] <source_file> "
+          "<output_bytecode>\n"
+          "  %s exec [--no-jit] [--time] [--print-bytecode] <bytecode_file>\n",
           prog,
           prog,
           prog);
@@ -62,10 +63,12 @@ static int parse_exec_flags(int argc,
                             int start,
                             bool* no_jit,
                             bool* show_time,
+                            bool* print_bytecode,
                             const char** filepath) {
   int file_count = 0;
   *no_jit = false;
   *show_time = false;
+  *print_bytecode = false;
   *filepath = NULL;
 
   for (int i = start; i < argc; i++) {
@@ -73,6 +76,8 @@ static int parse_exec_flags(int argc,
       *no_jit = true;
     } else if (strcmp(argv[i], "--time") == 0) {
       *show_time = true;
+    } else if (strcmp(argv[i], "--print-bytecode") == 0) {
+      *print_bytecode = true;
     } else if (argv[i][0] == '-') {
       fprintf(stderr, "Unknown flag: %s\n", argv[i]);
       return -1;
@@ -88,15 +93,21 @@ static int parse_exec_flags(int argc,
 static int parse_build_args(int argc,
                             char* argv[],
                             bool* show_time,
+                            bool* print_bytecode,
                             const char** src_path,
                             const char** out_path) {
   *show_time = false;
+  *print_bytecode = false;
   *src_path = NULL;
   *out_path = NULL;
 
   for (int i = 2; i < argc; i++) {
     if (strcmp(argv[i], "--time") == 0) {
       *show_time = true;
+      continue;
+    }
+    if (strcmp(argv[i], "--print-bytecode") == 0) {
+      *print_bytecode = true;
       continue;
     }
     if (argv[i][0] == '-') {
@@ -311,12 +322,14 @@ int main(int argc, char* argv[]) {
 
   if (strcmp(cmd, "build") == 0) {
     bool show_time = false;
+    bool print_bytecode = false;
     const char* src_path = NULL;
     const char* out_path = NULL;
     struct timespec compile_start, compile_end;
 
     if (parse_build_args(
-            argc, argv, &show_time, &src_path, &out_path) != 0) {
+            argc, argv, &show_time, &print_bytecode, &src_path, &out_path) !=
+        0) {
       usage(argv[0]);
       onda_env_free(&env);
       return ONDA_EXIT_USAGE;
@@ -342,6 +355,8 @@ int main(int argc, char* argv[]) {
         .const_pool = cobj.const_pool,
         .const_pool_size = cobj.const_pool_size,
     };
+    if (print_bytecode)
+      onda_vm_print_bytecode(prog.code, prog.code_size);
 
     int rc = ONDA_EXIT_OK;
     if (write_bytecode_file(out_path, &prog) != 0) {
@@ -361,11 +376,14 @@ int main(int argc, char* argv[]) {
   if (strcmp(cmd, "run") == 0 || strcmp(cmd, "exec") == 0) {
     bool no_jit = false;
     bool show_time = false;
+    bool print_bytecode = false;
     const char* filepath = NULL;
     struct timespec compile_start, compile_end;
     double exec_ms = 0.0;
 
-    if (parse_exec_flags(argc, argv, 2, &no_jit, &show_time, &filepath) != 0) {
+    if (parse_exec_flags(
+            argc, argv, 2, &no_jit, &show_time, &print_bytecode, &filepath) !=
+        0) {
       usage(argv[0]);
       onda_env_free(&env);
       return ONDA_EXIT_USAGE;
@@ -394,6 +412,8 @@ int main(int argc, char* argv[]) {
             .const_pool = const_pool,
             .const_pool_size = const_pool_size,
         };
+        if (print_bytecode)
+          onda_vm_print_bytecode(prog.code, prog.code_size);
         rc = run_program(&prog, &env, no_jit, show_time, &exec_ms);
       }
 
@@ -425,6 +445,8 @@ int main(int argc, char* argv[]) {
         .const_pool = cobj.const_pool,
         .const_pool_size = cobj.const_pool_size,
     };
+    if (print_bytecode)
+      onda_vm_print_bytecode(prog.code, prog.code_size);
     rc = run_program(&prog, &env, no_jit, show_time, &exec_ms);
 
     onda_code_obj_free(&cobj);
