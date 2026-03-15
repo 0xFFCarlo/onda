@@ -334,9 +334,6 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
         EMIT_MOV_RAX_FROM_LOCAL(local_id - ONDA_LOCALS_BASE_OFF);
       } else {
         uint32_t off = (uint32_t)local_id * 8;
-        if (local_id >= ONDA_LOCALS_BASE_OFF) {
-          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8;
-        }
         EMIT_LOAD_FRAME(off); // mov rax, [r13 + off]
       }
     } break;
@@ -348,9 +345,6 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
         EMIT_MOV_LOCAL_FROM_RAX(local_id - ONDA_LOCALS_BASE_OFF);
       } else {
         uint32_t off = (uint32_t)local_id * 8;
-        if (local_id >= ONDA_LOCALS_BASE_OFF) {
-          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8;
-        }
         EMIT_STORE_FRAME_RAX(off); // mov [r13 + off], rax
       }
       EMIT_POP_DS_RAX;
@@ -385,9 +379,6 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
         EMIT_MOV_RCX_FROM_LOCAL(local_id - ONDA_LOCALS_BASE_OFF);
       } else {
         uint32_t off = (uint32_t)local_id * 8;
-        if (local_id >= ONDA_LOCALS_BASE_OFF) {
-          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8;
-        }
         EMIT_LOAD_FRAME_RCX(off);
       }
       EMITV(0x48, 0x01, 0xC8); // add rax, rcx
@@ -400,9 +391,6 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
         EMIT_MOV_RCX_FROM_LOCAL(local_id - ONDA_LOCALS_BASE_OFF);
       } else {
         uint32_t off = (uint32_t)local_id * 8;
-        if (local_id >= ONDA_LOCALS_BASE_OFF) {
-          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8;
-        }
         EMIT_LOAD_FRAME_RCX(off);
       }
       EMITV(0x48, 0x0F, 0xAF, 0xC1); // imul rax, rcx
@@ -500,9 +488,6 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
         }
       } else {
         uint32_t off = (uint32_t)local_id * 8;
-        if (local_id >= ONDA_LOCALS_BASE_OFF) {
-          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8;
-        }
         if (off <= 127) {
           EMITV(0x49, 0xFF, 0x45, (uint8_t)off); // inc qword [r13+off]
         } else {
@@ -528,9 +513,6 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
         }
       } else {
         uint32_t off = (uint32_t)local_id * 8;
-        if (local_id >= ONDA_LOCALS_BASE_OFF) {
-          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8;
-        }
         if (off <= 127) {
           EMITV(0x49, 0xFF, 0x4D, (uint8_t)off); // dec qword [r13+off]
         } else {
@@ -718,8 +700,10 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
 
       ENSURE_CAPACITY(64u + (size_t)argc * 16u);
 
-      const uint32_t frame_bytes =
-          (uint32_t)(2u + ONDA_LOCAL_REG_COUNT + locals) * 8u;
+      const uint32_t frame_slots = 2u + (locals > ONDA_LOCAL_REG_COUNT
+                                             ? (uint32_t)locals
+                                             : (uint32_t)ONDA_LOCAL_REG_COUNT);
+      const uint32_t frame_bytes = frame_slots * 8u;
 
       // mov rcx, r13  -- save prev frame_bp
       EMITV(0x4C, 0x89, 0xE9);
@@ -746,8 +730,7 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
           if (local_reg_idx < ONDA_LOCAL_REG_COUNT) {
             EMIT_MOV_LOCAL_FROM_RAX(local_reg_idx);
           } else {
-            const uint32_t frame_off =
-                (uint32_t)(2 + ONDA_LOCAL_REG_COUNT + i) * 8;
+            const uint32_t frame_off = (uint32_t)(2 + i) * 8;
             EMIT_STORE_FRAME_RAX(frame_off);
           }
         } else {
@@ -757,8 +740,7 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
           if (local_reg_idx < ONDA_LOCAL_REG_COUNT) {
             EMIT_MOV_LOCAL_FROM_RDX(local_reg_idx);
           } else {
-            const uint32_t frame_off =
-                (uint32_t)(2 + ONDA_LOCAL_REG_COUNT + i) * 8;
+            const uint32_t frame_off = (uint32_t)(2 + i) * 8;
             EMIT_STORE_FRAME_RDX(frame_off);
           }
         }

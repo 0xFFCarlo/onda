@@ -282,9 +282,6 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
         EMIT(AA64_MOV(0, AA64_LOCAL_REG(local_id - ONDA_LOCALS_BASE_OFF)));
       } else {
         uint32_t off = (uint32_t)local_id * 8u;
-        if (local_id >= ONDA_LOCALS_BASE_OFF) {
-          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8u;
-        }
         EMIT(AA64_LDRU(0, FS_REG, off));
       }
     } break;
@@ -295,9 +292,6 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
         EMIT(AA64_MOV(AA64_LOCAL_REG(local_id - ONDA_LOCALS_BASE_OFF), 0));
       } else {
         uint32_t off = (uint32_t)local_id * 8u;
-        if (local_id >= ONDA_LOCALS_BASE_OFF) {
-          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8u;
-        }
         EMIT(AA64_STRU(0, FS_REG, off));
       }
       EMIT(AA64_POP_STACK(0));
@@ -372,9 +366,6 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
         EMIT(AA64_ADD(0, 0, AA64_LOCAL_REG(local_id - ONDA_LOCALS_BASE_OFF)));
       } else {
         uint32_t off = (uint32_t)local_id * 8u;
-        if (local_id >= ONDA_LOCALS_BASE_OFF) {
-          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8u;
-        }
         EMIT2(AA64_LDRU(1, FS_REG, off), AA64_ADD(0, 0, 1));
       }
     } break;
@@ -385,9 +376,6 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
         EMIT(AA64_MUL(0, 0, AA64_LOCAL_REG(local_id - ONDA_LOCALS_BASE_OFF)));
       } else {
         uint32_t off = (uint32_t)local_id * 8u;
-        if (local_id >= ONDA_LOCALS_BASE_OFF) {
-          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8u;
-        }
         EMIT2(AA64_LDRU(1, FS_REG, off), AA64_MUL(0, 0, 1));
       }
     } break;
@@ -466,9 +454,6 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
         EMIT(AA64_ADDI(reg, reg, 1));
       } else {
         uint32_t off = (uint32_t)local_id * 8u;
-        if (local_id >= ONDA_LOCALS_BASE_OFF) {
-          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8u;
-        }
         EMIT2(AA64_LDRU(7, FS_REG, off), AA64_ADDI(7, 7, 1));
         EMIT(AA64_STRU(7, FS_REG, off));
       }
@@ -481,9 +466,6 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
         EMIT(AA64_SUBI(reg, reg, 1));
       } else {
         uint32_t off = (uint32_t)local_id * 8u;
-        if (local_id >= ONDA_LOCALS_BASE_OFF) {
-          off += (uint32_t)ONDA_LOCAL_REG_COUNT * 8u;
-        }
         EMIT2(AA64_LDRU(7, FS_REG, off), AA64_SUBI(7, 7, 1));
         EMIT(AA64_STRU(7, FS_REG, off));
       }
@@ -568,9 +550,12 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
       memcpy(&branch_offset, &bytecode[bcode_pos], 4);
       bcode_pos += sizeof(int32_t);
       EMIT(AA64_MOV(6, FS_REG)); // store frame pointer in x6
-      // make room for 2 + locals elements
-      const uint32_t frame_bytes =
-          (uint32_t)(2u + ONDA_LOCAL_REG_COUNT + locals) * 8u;
+      // Reserve frame slots for return metadata, saved local regs, and
+      // spilled locals. Register-resident locals reuse the saved-reg slots.
+      const uint32_t frame_slots = 2u + (locals > ONDA_LOCAL_REG_COUNT
+                                             ? (uint32_t)locals
+                                             : (uint32_t)ONDA_LOCAL_REG_COUNT);
+      const uint32_t frame_bytes = frame_slots * 8u;
       if (frame_bytes <= 4095) {
         EMIT(AA64_SUBI(FS_REG, FS_REG, frame_bytes));
       } else {
@@ -589,13 +574,13 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
           if (i < ONDA_LOCAL_REG_COUNT)
             EMIT(AA64_MOV(AA64_LOCAL_REG(i), 0));
           else
-            EMIT(AA64_STRU(0, FS_REG, (2 + ONDA_LOCAL_REG_COUNT + i) * 8));
+            EMIT(AA64_STRU(0, FS_REG, (2 + i) * 8));
         } else {
           EMIT(AA64_LDRU(7, DS_REG, (ds_j - 1) * 8));
           if (i < ONDA_LOCAL_REG_COUNT)
             EMIT(AA64_MOV(AA64_LOCAL_REG(i), 7));
           else
-            EMIT(AA64_STRU(7, FS_REG, (2 + ONDA_LOCAL_REG_COUNT + i) * 8));
+            EMIT(AA64_STRU(7, FS_REG, (2 + i) * 8));
         }
       }
       // Pop arguments from data stack
