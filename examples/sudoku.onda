@@ -1,4 +1,5 @@
 
+# ( board -- board)
 : print_board ( board | i j )
   "Board:\n" .s
   0 -> i while i 9 < do
@@ -12,6 +13,7 @@
     i ++ -> i
   end
   "" .s
+  board # Push board back to stack so it is not consumed by print_board
 ;
 
 : load_sudoku ( filename | board fp i j cell char )
@@ -77,8 +79,9 @@
         end
         i ++ -> i
       end
-  end 
+  end
 ;
 
-: main "sudoku.txt" load_sudoku dup print_board
-        solve_sudoku dup print_board free ;
+: cleanup ( board ) board free ;
+
+: main "sudoku.txt" load_sudoku print_board solve_sudoku print_board cleanup ;

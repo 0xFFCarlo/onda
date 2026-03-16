@@ -1,7 +1,7 @@
 : main
   10
   while dup 0 > do
-    dup . --
+    dup . -- "\n" .s
   end
   drop
 ;
