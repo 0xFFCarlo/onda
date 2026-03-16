@@ -193,7 +193,7 @@ class OndaLspServer:
         return {
             "contents": {
                 "kind": "markdown",
-                "value": f"`{token.text}`\\n\\nStack: `{stack}`\\n\\n{info}",
+                "value": f"`{token.text}`\n\nStack: `{stack}`\n\n{info}",
             },
             "range": {
                 "start": {"line": token.line, "character": token.start_char},

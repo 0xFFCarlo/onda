@@ -4,10 +4,51 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .keywords import BUILTINS, KEYWORDS, STDLIB_FUNCTIONS
 from .types import Diagnostic, Position, Range, Symbol, Token
 
 _BLOCK_OPENERS = {"if", "while"}
 _NON_SYMBOL_TOKENS = {";", "if", "while", "then", "else", "end", "do"}
+_IMM_WORDS = {
+    "+",
+    "-",
+    "*",
+    "/",
+    "%",
+    "++",
+    "--",
+    "<<",
+    ">>",
+    "&",
+    "|",
+    "^",
+    "~",
+    "==",
+    "!=",
+    "<",
+    "<=",
+    ">",
+    ">=",
+    "over",
+    "rot",
+    "->",
+    "continue",
+    "@",
+    "!",
+    "b@",
+    "b!",
+    "h@",
+    "h!",
+    "w@",
+    "w!",
+}
+_RESERVED_NAME_TOKENS = (
+    set(KEYWORDS)
+    | set(BUILTINS)
+    | set(STDLIB_FUNCTIONS)
+    | _IMM_WORDS
+    | {"(", ")", "|", ":", ";"}
+)
 
 
 @dataclass(slots=True)
@@ -96,12 +137,27 @@ def _strip_comment(line: str) -> str:
 def analyze(text: str) -> AnalysisResult:
     tokens, diagnostics = tokenize(text)
     symbols: list[Symbol] = []
+    word_defs: list[tuple[Token, list[Token]]] = []
 
     block_stack: list[Token] = []
     open_word: Token | None = None
+    open_word_idx = -1
 
     for idx, token in enumerate(tokens):
         t = token.text
+
+        if open_word is not None and idx > open_word_idx and t.startswith(":"):
+            diagnostics.append(
+                Diagnostic(
+                    message="Nested word definition not allowed",
+                    severity=1,
+                    range=Range(
+                        start=Position(token.line, token.start_char),
+                        end=Position(token.line, token.end_char),
+                    ),
+                )
+            )
+            continue
 
         if t in _BLOCK_OPENERS:
             block_stack.append(token)
@@ -122,9 +178,11 @@ def analyze(text: str) -> AnalysisResult:
 
         if t == ":":
             open_word = token
+            open_word_idx = idx
             if idx + 1 < len(tokens):
                 name_tok = tokens[idx + 1]
                 if name_tok.text not in _NON_SYMBOL_TOKENS:
+                    sig_locals, _ = _parse_word_sig_locals(tokens, idx + 2)
                     symbols.append(
                         Symbol(
                             name=name_tok.text,
@@ -133,18 +191,31 @@ def analyze(text: str) -> AnalysisResult:
                             end_char=name_tok.end_char,
                         )
                     )
+                    word_defs.append((name_tok, sig_locals))
         elif t.startswith(":") and len(t) > 1:
+            if t.startswith("::"):
+                continue
             open_word = token
+            open_word_idx = idx
+            name_tok = Token(
+                text=t[1:],
+                line=token.line,
+                start_char=token.start_char + 1,
+                end_char=token.end_char,
+            )
+            sig_locals, _ = _parse_word_sig_locals(tokens, idx + 1)
             symbols.append(
                 Symbol(
-                    name=t[1:],
-                    line=token.line,
-                    start_char=token.start_char,
-                    end_char=token.end_char,
+                    name=name_tok.text,
+                    line=name_tok.line,
+                    start_char=name_tok.start_char,
+                    end_char=name_tok.end_char,
                 )
             )
+            word_defs.append((name_tok, sig_locals))
         elif t == ";":
             open_word = None
+            open_word_idx = -1
 
     for start in block_stack:
         diagnostics.append(
@@ -170,4 +241,94 @@ def analyze(text: str) -> AnalysisResult:
             )
         )
 
+    diagnostics.extend(_validate_name_rules(word_defs))
+
     return AnalysisResult(diagnostics=diagnostics, symbols=symbols, tokens=tokens)
+
+
+def _parse_word_sig_locals(tokens: list[Token], start_idx: int) -> tuple[list[Token], int]:
+    if start_idx >= len(tokens) or tokens[start_idx].text != "(":
+        return [], start_idx
+
+    locals_tokens: list[Token] = []
+    i = start_idx + 1
+    while i < len(tokens):
+        t = tokens[i].text
+        if t == ")":
+            return locals_tokens, i + 1
+        if t != "|":
+            locals_tokens.append(tokens[i])
+        i += 1
+    return locals_tokens, i
+
+
+def _validate_name_rules(word_defs: list[tuple[Token, list[Token]]]) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    word_names: set[str] = set()
+    first_word_tokens: dict[str, Token] = {}
+
+    for word_tok, _ in word_defs:
+        diagnostics.extend(_validate_name_token(word_tok, "Word"))
+        if word_tok.text in first_word_tokens:
+            diagnostics.append(
+                _diag(
+                    word_tok,
+                    f"Word name '{word_tok.text}' is already defined",
+                )
+            )
+        else:
+            first_word_tokens[word_tok.text] = word_tok
+        word_names.add(word_tok.text)
+
+    for word_tok, local_tokens in word_defs:
+        seen_locals: set[str] = set()
+        for local_tok in local_tokens:
+            diagnostics.extend(_validate_name_token(local_tok, "Local"))
+            if local_tok.text in seen_locals:
+                diagnostics.append(
+                    _diag(
+                        local_tok,
+                        f"Local name '{local_tok.text}' is already defined",
+                    )
+                )
+            else:
+                seen_locals.add(local_tok.text)
+            if local_tok.text in word_names:
+                diagnostics.append(
+                    _diag(
+                        local_tok,
+                        f"Local name '{local_tok.text}' conflicts with word name",
+                    )
+                )
+
+    return diagnostics
+
+
+def _validate_name_token(token: Token, kind: str) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    if ":" in token.text:
+        diagnostics.append(
+            _diag(
+                token,
+                f"{kind} name '{token.text}' cannot contain ':'",
+            )
+        )
+    if token.text in _RESERVED_NAME_TOKENS:
+        diagnostics.append(
+            _diag(
+                token,
+                f"{kind} name '{token.text}' is reserved",
+            )
+        )
+    return diagnostics
+
+
+def _diag(token: Token, message: str) -> Diagnostic:
+    return Diagnostic(
+        message=message,
+        severity=1,
+        range=Range(
+            start=Position(token.line, token.start_char),
+            end=Position(token.line, token.end_char),
+        ),
+    )

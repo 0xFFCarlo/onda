@@ -715,6 +715,7 @@ static inline const onda_imm_word_t* find_imm_word(const char* name,
 }
 
 static int validate_name_availability(onda_lexer_t* lexer,
+                                      onda_env_t* env,
                                       onda_code_obj_t* cobj,
                                       const onda_token_t* tok,
                                       const char* symbol_kind) {
@@ -728,9 +729,31 @@ static int validate_name_availability(onda_lexer_t* lexer,
     return -1;
   }
 
+  for (size_t i = 0; i < tok->len; i++) {
+    const char ch = tok->start[i];
+    if (ch == '(' || ch == ')' || ch == '|' || ch == ':' || ch == ';') {
+      print_err(lexer,
+                "%s name '%.*s' contains reserved character '%c'\n",
+                symbol_kind,
+                tok->len,
+                tok->start,
+                ch);
+      return -1;
+    }
+  }
+
   if (find_imm_word(tok->start, tok->len)) {
     print_err(lexer,
               "%s name '%.*s' conflicts with immediate word name\n",
+              symbol_kind,
+              tok->len,
+              tok->start);
+    return -1;
+  }
+
+  if (onda_native_fn_get(&env->native_registry, tok->start, tok->len)) {
+    print_err(lexer,
+              "%s name '%.*s' conflicts with builtin name\n",
               symbol_kind,
               tok->len,
               tok->start);
@@ -759,11 +782,12 @@ static int validate_name_availability(onda_lexer_t* lexer,
 }
 
 static int validate_symbol_name(onda_lexer_t* lexer,
+                                onda_env_t* env,
                                 onda_code_obj_t* cobj,
                                 const onda_token_t* tok,
                                 bool is_alias) {
   return validate_name_availability(
-      lexer, cobj, tok, is_alias ? "Alias" : "Word");
+      lexer, env, cobj, tok, is_alias ? "Alias" : "Word");
 }
 
 static int onda_compile_word(onda_lexer_t* lexer,
@@ -776,7 +800,7 @@ static int onda_compile_word(onda_lexer_t* lexer,
     print_err(lexer, "Expected word name after ':'");
     return -1;
   }
-  if (validate_symbol_name(lexer, cobj, &tok, false) != 0)
+  if (validate_symbol_name(lexer, env, cobj, &tok, false) != 0)
     return -1;
 
   if (strncmp(tok.start, "main", tok.len) == 0)
@@ -817,7 +841,7 @@ static int onda_compile_word(onda_lexer_t* lexer,
         return -1;
       }
       onda_token_next(lexer, &tok); // consume argument name
-      if (validate_name_availability(lexer, cobj, &tok, "Local") != 0)
+      if (validate_name_availability(lexer, env, cobj, &tok, "Local") != 0)
         return -1;
       if (onda_scope_set(cobj, tok.start, tok.len, word.locals_count++) != 0) {
         print_err(
@@ -874,7 +898,7 @@ static int onda_compile_alias(onda_lexer_t* lexer,
     print_err(lexer, "Expected alias name after '::'");
     return -1;
   }
-  if (validate_symbol_name(lexer, cobj, &tok, true) != 0)
+  if (validate_symbol_name(lexer, env, cobj, &tok, true) != 0)
     return -1;
 
   strncpy(alias.name, tok.start, (size_t)tok.len);

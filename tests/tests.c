@@ -326,6 +326,9 @@ static const char* compile_fail_tests[] = {
     "::bad ( a ) a ; :main 1 bad ;",
     "::bad 1 -> x ; :main bad ;",
     ": foo 1 ; : main ( foo ) foo ;",
+    ": dup 1 ; : main dup ;",
+    ": foo|bar 1 ; : main foo|bar ;",
+    ": main ( a: b ) a: ;",
 };
 
 int main() {

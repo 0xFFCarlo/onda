@@ -29,6 +29,8 @@ class ServerSmokeTests(unittest.TestCase):
         self.assertIn("Stack:", value)
         self.assertIn("( str -- len )", value)
         self.assertIn("C-string length", value)
+        self.assertIn("\n\n", value)
+        self.assertNotIn("\\n\\n", value)
 
 
 if __name__ == "__main__":
