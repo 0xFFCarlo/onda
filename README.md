@@ -72,9 +72,15 @@ Run it:
 ## CLI
 
 ```text
-ondac run   [--no-jit] [--time] [--print-bytecode] <source_file>
+ondac run   [--no-jit] [--time] [--print-bytecode] (-e <source_string> | <source_file>)
 ondac build [--time] [--print-bytecode] <source_file> <output_bytecode>
 ondac exec  [--no-jit] [--time] [--print-bytecode] <bytecode_file>
+```
+
+Inline source example:
+
+```bash
+./bin/ondac run -e ':main "Hello from -e" print ;'
 ```
 
 ## Install

@@ -48,7 +48,8 @@ static double elapsed_ms(const struct timespec* start,
 static void usage(const char* prog) {
   fprintf(stderr,
           "Usage:\n"
-          "  %s run [--no-jit] [--time] [--print-bytecode] <source_file>\n"
+          "  %s run [--no-jit] [--time] [--print-bytecode] "
+          "(-e <source_string> | <source_file>)\n"
           "  %s build [--time] [--print-bytecode] <source_file> "
           "<output_bytecode>\n"
           "  %s exec [--no-jit] [--time] [--print-bytecode] <bytecode_file>\n",
@@ -63,12 +64,15 @@ static int parse_exec_flags(int argc,
                             bool* no_jit,
                             bool* show_time,
                             bool* print_bytecode,
-                            const char** filepath) {
+                            const char** filepath,
+                            const char** inline_source) {
   int file_count = 0;
+  int inline_count = 0;
   *no_jit = false;
   *show_time = false;
   *print_bytecode = false;
   *filepath = NULL;
+  *inline_source = NULL;
 
   for (int i = start; i < argc; i++) {
     if (strcmp(argv[i], "--no-jit") == 0) {
@@ -77,6 +81,12 @@ static int parse_exec_flags(int argc,
       *show_time = true;
     } else if (strcmp(argv[i], "--print-bytecode") == 0) {
       *print_bytecode = true;
+    } else if (strcmp(argv[i], "-e") == 0) {
+      if (i + 1 >= argc || inline_count > 0) {
+        return -1;
+      }
+      *inline_source = argv[++i];
+      inline_count++;
     } else if (argv[i][0] == '-') {
       fprintf(stderr, "Unknown flag: %s\n", argv[i]);
       return -1;
@@ -86,7 +96,7 @@ static int parse_exec_flags(int argc,
     }
   }
 
-  return file_count == 1 ? 0 : -1;
+  return (file_count + inline_count) == 1 ? 0 : -1;
 }
 
 static int parse_build_args(int argc,
@@ -377,11 +387,19 @@ int main(int argc, char* argv[]) {
     bool show_time = false;
     bool print_bytecode = false;
     const char* filepath = NULL;
+    const char* inline_source = NULL;
     struct timespec compile_start, compile_end;
     double exec_ms = 0.0;
 
     if (parse_exec_flags(
-            argc, argv, 2, &no_jit, &show_time, &print_bytecode, &filepath) !=
+            argc,
+            argv,
+            2,
+            &no_jit,
+            &show_time,
+            &print_bytecode,
+            &filepath,
+            &inline_source) !=
         0) {
       usage(argv[0]);
       onda_env_free(&env);
@@ -390,6 +408,12 @@ int main(int argc, char* argv[]) {
 
     int rc = ONDA_EXIT_OK;
     if (strcmp(cmd, "exec") == 0) {
+      if (inline_source) {
+        fprintf(stderr, "Inline source (-e) is only supported with run\n");
+        usage(argv[0]);
+        onda_env_free(&env);
+        return ONDA_EXIT_USAGE;
+      }
       uint8_t* code = NULL;
       size_t code_size = 0;
       size_t entry_pc = 0;
@@ -428,7 +452,21 @@ int main(int argc, char* argv[]) {
     onda_code_obj_init(&cobj, ONDA_CODE_BUF_SIZE);
     if (show_time)
       clock_gettime(CLOCK_MONOTONIC, &compile_start);
-    if (onda_compile_file(filepath, &lexer, &env, &cobj) != 0) {
+    if (inline_source) {
+      lexer.src = inline_source;
+      lexer.filename = "<arg>";
+      lexer.filepath = NULL;
+      lexer.import_depth = 0;
+      lexer.pos = 0;
+      lexer.line = 0;
+      lexer.column = 0;
+      if (onda_compile(&lexer, &env, &cobj) != 0) {
+        fprintf(stderr, "Failed to parse source from -e argument\n");
+        onda_code_obj_free(&cobj);
+        onda_env_free(&env);
+        return ONDA_EXIT_COMPILE;
+      }
+    } else if (onda_compile_file(filepath, &lexer, &env, &cobj) != 0) {
       fprintf(stderr, "Failed to parse source file: %s\n", filepath);
       onda_code_obj_free(&cobj);
       onda_env_free(&env);
