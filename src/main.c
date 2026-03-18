@@ -13,7 +13,6 @@
 #include <string.h>
 #include <time.h>
 
-#define CODE_BUF_SIZE 2048
 #define ONDA_BC_VERSION 1u
 
 enum {
@@ -336,7 +335,7 @@ int main(int argc, char* argv[]) {
     }
 
     onda_code_obj_t cobj = {0};
-    onda_code_obj_init(&cobj, CODE_BUF_SIZE);
+    onda_code_obj_init(&cobj, ONDA_CODE_BUF_SIZE);
     if (show_time)
       clock_gettime(CLOCK_MONOTONIC, &compile_start);
     if (onda_compile_file(src_path, &lexer, &env, &cobj) != 0) {
@@ -426,7 +425,7 @@ int main(int argc, char* argv[]) {
     }
 
     onda_code_obj_t cobj = {0};
-    onda_code_obj_init(&cobj, CODE_BUF_SIZE);
+    onda_code_obj_init(&cobj, ONDA_CODE_BUF_SIZE);
     if (show_time)
       clock_gettime(CLOCK_MONOTONIC, &compile_start);
     if (onda_compile_file(filepath, &lexer, &env, &cobj) != 0) {
@@ -461,7 +460,7 @@ int main(int argc, char* argv[]) {
 
   if (argc == 2) {
     onda_code_obj_t cobj = {0};
-    onda_code_obj_init(&cobj, CODE_BUF_SIZE);
+    onda_code_obj_init(&cobj, ONDA_CODE_BUF_SIZE);
     if (onda_compile_file(argv[1], &lexer, &env, &cobj) != 0) {
       fprintf(stderr, "Failed to parse source file: %s\n", argv[1]);
       onda_code_obj_free(&cobj);

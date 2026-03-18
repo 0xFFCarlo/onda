@@ -8,8 +8,6 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define CODE_BUF_SIZE 1024
-
 typedef struct test_case_t {
   const char* program;
   size_t stack_size;
@@ -346,7 +344,7 @@ int main() {
   // Run tests using VM
   printf("Testing with VM:\n");
   for (i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
-    onda_code_obj_init(&cobj, CODE_BUF_SIZE);
+    onda_code_obj_init(&cobj, ONDA_CODE_BUF_SIZE);
     cobj.size = 0;
     cobj.entry_pc = 0;
     lexer.src = tests[i].program;
@@ -408,7 +406,7 @@ int main() {
   printf("\nTesting compile failures:\n");
   for (i = 0; i < sizeof(compile_fail_tests) / sizeof(compile_fail_tests[0]);
        i++) {
-    onda_code_obj_init(&cobj, CODE_BUF_SIZE);
+    onda_code_obj_init(&cobj, ONDA_CODE_BUF_SIZE);
     cobj.size = 0;
     cobj.entry_pc = 0;
     lexer.src = compile_fail_tests[i];
@@ -431,7 +429,7 @@ int main() {
   // Run tests using JIT only (without VM execution)
   printf("\nTesting with JIT:\n");
   for (i = 0; i < sizeof(tests) / sizeof(tests[0]); i++) {
-    onda_code_obj_init(&cobj, CODE_BUF_SIZE);
+    onda_code_obj_init(&cobj, ONDA_CODE_BUF_SIZE);
     cobj.size = 0;
     cobj.entry_pc = 0;
     lexer.src = tests[i].program;

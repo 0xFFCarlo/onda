@@ -102,15 +102,29 @@ typedef struct {
   uint8_t recent_opcode_count;
 } onda_code_obj_t;
 
+// Push recently emitted opcode for peephole optimization tracking
 void onda_code_obj_recent_push(onda_code_obj_t* cobj,
                                uint8_t opcode,
                                size_t opcode_pos);
+
+// Trim recently emitted opcodes from tracking when they are no 
+// longer relevant for optimization
 void onda_code_obj_recent_trim(onda_code_obj_t* cobj, size_t new_size);
+
+// Reserve space in bytecode buffer for emitting instructions and 
+// return offset for emission
 int onda_code_obj_reserve(onda_code_obj_t* cobj, size_t extra);
+
+// Emit a single byte value into the bytecode buffer
 int onda_code_obj_emit_u8(onda_code_obj_t* cobj, uint8_t value);
+
+// Emit multiple bytes from source into the bytecode buffer
 int onda_code_obj_emit_bytes(onda_code_obj_t* cobj,
                              const void* src,
                              size_t len);
+
+// Emit an opcode and no operands into the bytecode buffer. This is tracked
+// for peephole optimizations.
 int onda_code_obj_emit_opcode(onda_code_obj_t* cobj, uint8_t opcode);
 
 // Get next token from the lexer
