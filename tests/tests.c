@@ -189,6 +189,8 @@ static const test_case_t tests[] = {
      ": main 3 4 dist2 ;",
      1,
      25},
+    // Main word with local temporaries
+    {": main ( | tmp ) 10 -> tmp tmp ;", 1, 10},
     // Word with local temporaries and nested loop with continue statements
     {
         ": countdown ( n k | start_k i ) "
@@ -327,6 +329,7 @@ static const char* compile_fail_tests[] = {
     ": dup 1 ; : main dup ;",
     ": foo|bar 1 ; : main foo|bar ;",
     ": main ( a: b ) a: ;",
+    ": main ( a ) a ;",
 };
 
 int main() {

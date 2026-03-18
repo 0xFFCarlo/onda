@@ -1,9 +1,0 @@
-: main
-  if 10 15 > then
-    "Temperature is cold\n" .s
-    ret
-  else
-  "Temperature is warm\n" .s
-   ret
-  end
-;

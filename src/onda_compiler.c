@@ -453,6 +453,32 @@ static int onda_compile_expr(onda_lexer_t* lexer,
                              onda_env_t* env,
                              onda_code_obj_t* cobj);
 
+static int onda_finalize_entry(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
+  uint64_t word_id = 0;
+  if (onda_dict_get(&cobj->words_map, "main", 4, &word_id) != 0)
+    return 0;
+
+  const onda_word_t* main_word = &cobj->words[word_id];
+  if (main_word->args_count != 0) {
+    print_err(lexer, "main word cannot declare arguments\n");
+    return -1;
+  }
+
+  const size_t entry_pc = cobj->size;
+  CODE_PUSH_OPCODE(ONDA_OP_CALL);
+  CODE_PUSH_BYTE(0); // argc
+  CODE_PUSH_BYTE(main_word->locals_count);
+  const size_t call_offset_pc = cobj->size;
+  CODE_PUSH_BYTES(&(int32_t){0}, sizeof(int32_t));
+  const size_t next_instr_pc = cobj->size;
+  const int32_t branch_offset =
+      (int32_t)((int32_t)main_word->pc - (int32_t)next_instr_pc);
+  memcpy(&cobj->code[call_offset_pc], &branch_offset, sizeof(int32_t));
+  CODE_PUSH_OPCODE(ONDA_OP_RET);
+  cobj->entry_pc = entry_pc;
+  return 0;
+}
+
 static inline int onda_compile_until_ident(onda_lexer_t* lexer,
                                            onda_env_t* env,
                                            onda_code_obj_t* cobj,
@@ -1074,6 +1100,11 @@ int onda_compile(onda_lexer_t* lexer,
     if (rc != 0)
       return rc;
   }
+  if (lexer->import_depth == 0 && code_obj->alias_expand_depth == 0 &&
+      code_obj->current_scope == NULL) {
+    if (onda_finalize_entry(lexer, code_obj) != 0)
+      return -1;
+  }
   return 0;
 }
 
@@ -1098,6 +1129,7 @@ int onda_compile_file(const char* filepath,
   const char* prev_filepath = lexer->filepath;
   const char* prev_filename = lexer->filename;
   const char* prev_src = lexer->src;
+  const bool is_top_level = prev_src == NULL;
   size_t prev_column = lexer->column, prev_line = lexer->line,
          prev_pos = lexer->pos;
 
@@ -1159,6 +1191,8 @@ int onda_compile_file(const char* filepath,
     print_err(lexer, "Compilation error in imported file: %s\n", resolved_path);
     goto cleanup;
   }
+  if (is_top_level && onda_finalize_entry(lexer, cobj) != 0)
+    goto cleanup;
   rc = 0;
 
 cleanup:

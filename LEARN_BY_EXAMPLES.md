@@ -1,304 +1,324 @@
 # Onda: Learn by Examples
 
-This guide explains Onda by walking from simple examples to advanced features.
+This guide teaches Onda the same way you would learn it by hand: start with a
+small program, then add one concept at a time until you can read and write
+real multi-file programs.
 
-Onda is a Forth-like, stack-based language:
-- You push values to a data stack.
-- Words (functions) consume and produce stack values.
-- Programs are mostly sequences of tokens executed left-to-right.
+At every step, keep this model in mind:
+- Onda is stack-based.
+- Words consume values from the top of the stack and push results back.
+- Programs are mostly left-to-right token sequences.
 
-## 1. First program
+## 1. Hello World
 
-From `examples/hello_world.onda`:
+The first goal is to see the full shape of an Onda program: define `main`,
+push a value, call a word.
+
+File: `examples/hello_world.onda`
 
 ```onda
 : main "Hello World!\n" .s ;
 ```
 
-What happens:
-- `: main ... ;` defines a word named `main`.
-- The string literal pushes a pointer to the string.
-- `.s` prints the string.
-- `main` is used as the entry point when present.
+Step by step:
+1. `: main ... ;` defines a word named `main`.
+2. `"Hello World!\n"` pushes a pointer to the string literal.
+3. `.s` prints that string and consumes the pointer.
+4. Because `main` exists, it is used as program entry.
 
-## 2. Core syntax
+Run:
 
-### Comments
-
-Use `#` for comments to end-of-line:
-
-```onda
-# This is a comment
-: main 1 2 + . ; # trailing comment
+```bash
+./bin/ondac run examples/hello_world.onda
 ```
 
-### Strings
+## 2. Stack Basics
 
-Strings are in double quotes.
-Escape sequences supported by lexer/compiler include:
-- `\n`, `\t`, `\r`, `\"`, `\\`
+Now that you have a runnable program, focus on stack mechanics: arithmetic,
+duplication, and printing.
+
+File: `examples/stack_basics.onda`
 
 ```onda
-"Line1\nLine2\tTabbed"
+: main
+  3 4 + dup .
+  " <- 3 + 4\n" .s
+;
 ```
 
-### Numbers
+Step by step:
+1. `3` pushes `3`.
+2. `4` pushes `4`.
+3. `+` pops `4` and `3`, then pushes `7`.
+4. `dup` duplicates top value (`7` becomes `7 7`).
+5. `.` prints one `7` and consumes it.
+6. The second `7` stays on the stack.
+7. `" <- 3 + 4\n" .s` prints the trailing message.
 
-Integer literals supported:
-- Decimal: `42`, `-7`
-- Hex: `0xFF`
-- Binary: `0b1011`
+Why `dup` matters:
+- You can inspect a value without losing it immediately.
 
-## 3. Defining words (Forth-style)
+Run:
 
-### Word with no arguments
-
-```onda
-: square dup * ;
-: main 5 square . ;
+```bash
+./bin/ondac run examples/stack_basics.onda
 ```
 
-Pattern: `: name ... ;`
+## 3. Words With Arguments and Locals
 
-### Word with arguments
+As programs grow, unnamed stack juggling becomes harder to read. This section
+shows Onda's readability pattern: named arguments plus named temporaries.
 
-From `examples/words_with_args.onda`:
-
-```onda
-: dist ( a b ) a a * b b * + ;
-: main 3 4 dist . ;
-```
-
-- `( a b )` declares named inputs for readability.
-- Inside body, `a` and `b` push those local values.
-
-### Word with arguments and locals
-
-From `examples/words_with_args_2.onda`:
+File: `examples/words_and_args.onda`
 
 ```onda
-: dist2 ( a b | aa bb )
+: hypot2 ( a b | aa bb )
   a a * -> aa
   b b * -> bb
-  aa bb + ;
+  aa bb +
+;
+
+: main
+  3 4 hypot2 .
+  "\n" .s
+;
 ```
 
-- `|` splits argument names from local-only temporaries.
-- `-> name` stores top-of-stack into an existing local/argument.
+Step by step (`hypot2`):
+1. Signature `( a b | aa bb )` declares:
+   - arguments: `a`, `b`
+   - local temporaries: `aa`, `bb`
+2. `a a *` loads `a` twice and computes `a²`.
+3. `-> aa` stores that result into local `aa`.
+4. `b b * -> bb` computes `b²` and stores in `bb`.
+5. `aa bb +` loads locals and returns `a² + b²`.
 
-### Word with only locals
+Step by step (`main`):
+1. Pushes `3`, `4`.
+2. Calls `hypot2`, which returns `25`.
+3. Prints `25`.
 
-You can define locals without arguments:
+Practical rule:
+- Use locals for conceptual intermediate values.
+- Keep raw stack tricks for very small words.
+
+Run:
+
+```bash
+./bin/ondac run examples/words_and_args.onda
+```
+
+## 4. Locals in `main`
+
+You can apply the same style at the entry point. That keeps top-level logic
+readable, especially in bigger scripts.
+
+File: `examples/locals_and_main.onda`
 
 ```onda
-: example ( | tmp count )
-  10 -> count
-  count 2 * -> tmp
+: main ( | tmp )
+  10 -> tmp
   tmp .
+  "\n" .s
 ;
 ```
 
-### Nested word definitions are not allowed
+Step by step:
+1. `( | tmp )` declares local `tmp` with no arguments.
+2. `10` pushes `10`.
+3. `-> tmp` stores top-of-stack into `tmp`.
+4. `tmp` loads value back to stack.
+5. `.` prints `10`.
 
-You cannot define `: another ... ;` inside a word body.
+Important:
+- `main` supports locals.
+- `main` does not accept arguments.
 
-## 4. Calling words and stack behavior
+Run:
 
-From `examples/fibonacci.onda` and `examples/run_fibonacci.onda`:
-
-```onda
-:fib
-  if dup 2 < then
-    if dup 0 == then drop 0 else drop 1 end
-  else
-    dup 1 - fib swap 2 - fib +
-  end
-;
-
-:main 10 fib . ;
+```bash
+./bin/ondac run examples/locals_and_main.onda
 ```
 
-Notes:
-- Words can be written as `:fib ... ;` or `: fib ... ;`.
-- Stack operators like `dup`, `swap`, `drop` are central in Onda.
+## 5. Control Flow: `if`, `while`, `continue`
 
-## 5. Conditionals
+With naming in place, control flow reads like a direct algorithm. This example
+sums odd numbers down from `n`.
 
-From `examples/if_statement_example.onda`:
-
-```onda
-: main
-  if 10 15 > then
-    "Temperature is cold\n" .s
-    ret
-  else
-    "Temperature is warm\n" .s
-    ret
-  end
-;
-```
-
-Syntax:
-- `if <condition-code> then <true-branch> [else <false-branch>] end`
-
-The condition code runs first and leaves a truthy/falsy value on stack.
-
-## 6. Loops and continue
-
-From `examples/count_down.onda`:
+File: `examples/control_flow.onda`
 
 ```onda
-: main
-  10
-  while dup 0 > do
-    dup . -- "\n" .s
-  end
-  drop
-;
-```
-
-Syntax:
-- `while <condition-code> do <body> end`
-
-`continue` exists and jumps to the current loop condition check:
-
-```onda
-: demo
-  10
-  while dup 0 > do
-    if dup 5 == then
-      --
+: sum_odd_to ( n | acc )
+  0 -> acc
+  while n 0 > do
+    if n 2 % 0 == then
+      n -- -> n
       continue
     end
-    dup .
-    --
+    acc n + -> acc
+    n -- -> n
   end
-  drop
+  acc
+;
+
+: main
+  10 sum_odd_to .
+  "\n" .s
 ;
 ```
 
-`continue` is only valid inside a `while` loop.
+Step by step (`sum_odd_to`):
+1. Initialize accumulator: `0 -> acc`.
+2. Loop while `n > 0`.
+3. Check `n 2 % 0 ==` to detect even numbers.
+4. If even, decrement `n` and `continue`.
+5. If odd, add `n` into `acc`, then decrement `n`.
+6. After loop, return `acc`.
 
-## 7. Imports and multi-file programs
+For input `10`, output is `25` (`1+3+5+7+9`).
 
-From `examples/run_fibonacci.onda`:
+Run:
+
+```bash
+./bin/ondac run examples/control_flow.onda
+```
+
+## 6. Imports and Multi-file Programs
+
+Once a word is useful, move it to a separate file and import it. That gives
+you reuse without changing the language model.
+
+Files:
+- `examples/imports_math.onda`
+- `examples/imports_main.onda`
+
+`imports_math.onda`:
 
 ```onda
-import "fibonacci.onda"
-
-:main 10 fib . ;
+: square ( n ) n n * ;
+: cube ( n ) n square n * ;
 ```
+
+`imports_main.onda`:
+
+```onda
+import "imports_math.onda"
+
+: main
+  5 square .
+  " " .s
+  3 cube .
+  "\n" .s
+;
+```
+
+Step by step:
+1. `import "imports_math.onda"` makes `square` and `cube` available.
+2. `5 square` computes `25`.
+3. `3 cube` computes `27`.
+4. Program prints `25 27`.
 
 Notes:
-- `import` requires a string literal path.
-- Imports resolve relative to the current file path.
-- Import cycles are detected (see `examples/import_cycle_*.onda`).
+- Import paths are relative to the current file.
+- Import cycles are rejected.
 
-## 8. Alias words (`::`)
+Run:
 
-Aliases are compile-time expansions.
+```bash
+./bin/ondac run examples/imports_main.onda
+```
 
-Syntax:
+## 7. Memory Basics
+
+Onda stays low-level when you need it. This example shows explicit allocation,
+store/load, and free.
+
+File: `examples/memory_basics.onda`
 
 ```onda
-:: inc10 10 + ;
-: main 5 inc10 . ;
+: main ( | ptr )
+  16 malloc -> ptr
+  42 ptr !
+  ptr @ .
+  "\n" .s
+  ptr free
+;
 ```
 
-Important rules:
-- Alias definition starts with `:: name ... ;`
-- Aliases cannot declare argument/local lists (`(`, `)`, `|` are forbidden there).
-- Aliases expand recursively at compile time (with depth limits to prevent infinite recursion).
+Step by step:
+1. `16 malloc` allocates 16 bytes and returns a pointer.
+2. `-> ptr` stores pointer in a local.
+3. `42 ptr !` stores 64-bit value `42` at `ptr`.
+4. `ptr @` loads it back.
+5. `.` prints `42`.
+6. `ptr free` releases memory.
 
-Use alias when you want a short reusable phrase, not a real call frame.
+Typed memory operations:
+- `b@/b!` byte, `h@/h!` halfword, `w@/w!` word, `@/!` 64-bit.
 
-## 9. Operators and memory words
+Run:
 
-Common immediate words/operators include:
-- Arithmetic: `+ - * / % ++ --`
-- Comparison: `== != < <= > >=`
-- Logic: `and or not`
-- Bitwise: `& | ^ ~ << >>`
-- Stack: `drop dup over rot swap ret`
+```bash
+./bin/ondac run examples/memory_basics.onda
+```
 
-Memory load/store words (typed widths):
-- Byte: `b@` / `b!`
-- Halfword: `h@` / `h!`
-- Word: `w@` / `w!`
-- 64-bit: `@` / `!`
+## 8. File I/O Basics
 
-From `examples/memory.onda`:
+This is the same explicit style, now applied to I/O: open, check, write,
+close.
+
+File: `examples/file_io_basics.onda`
 
 ```onda
-: main 16 malloc dup 12 swap ! dup @ . free ;
+: main ( | fp )
+  "/tmp/onda_example.txt" "w" fopen -> fp
+  if fp not then
+    "failed to open file\n" .s
+    1 exit
+  end
+
+  "hello from onda\n" 1 16 fp fwrite drop
+  fp fclose drop
+
+  "wrote /tmp/onda_example.txt\n" .s
+;
 ```
 
-## 10. Standard library (C-backed) words
+Step by step:
+1. Open `/tmp/onda_example.txt` in write mode.
+2. If open fails, print an error and exit.
+3. `fwrite` writes 16 bytes from the string buffer.
+4. `fclose` closes the file handle.
+5. Final message confirms output path.
 
-Onda auto-registers a standard native library from C (`src/onda_std.c`).
-Examples include:
-- Printing: `.`, `.s`, `.c`, `print_u64`, `print_i64`, `print_hex`
-- Memory/string: `malloc`, `calloc`, `free`, `memcpy`, `memset`, `strlen`, `strcmp`, ...
-- File I/O: `fopen`, `fclose`, `fread`, `fwrite`, `fseek`, `ftell`, `fflush`, ...
-- Misc: `exit`, `assert`, `remove`, `rename`, `tmpfile`
+Run:
 
-You can see usage in examples like:
-- `examples/file_test.onda`
-- `examples/sudoku.onda`
-
-## 11. C interop: adding your own native function
-
-Onda can call C functions registered in the native registry.
-
-### C callback signature
-
-```c
-typedef int64_t* (*onda_native_fn_cb_t)(int64_t* data_stack);
+```bash
+./bin/ondac run examples/file_io_basics.onda
 ```
 
-Your function receives a pointer to the top-of-stack (`sp`) and returns the new top-of-stack after consuming args and producing returns.
+## 9. Advanced Demos
 
-### Registering a function
+After the core path, use these to study recursion depth, larger control flow,
+and performance behavior.
 
-Use:
+- Recursion demo: `examples/run_fibonacci.onda`
+- Solver: `examples/sudoku_solver.onda`
+- Benchmarks: `examples/benchmark_1.onda`, `examples/benchmark_2.onda`
 
-```c
-int onda_env_register_native_fn(onda_env_t* env,
-                                const char* name,
-                                onda_native_fn_cb_t fn,
-                                uint8_t args_count,
-                                uint8_t returns_count);
+Run examples:
+
+```bash
+./bin/ondac run examples/run_fibonacci.onda
+./bin/ondac run examples/sudoku_solver.onda
 ```
 
-Minimal example:
+## 10. Build, Bytecode, and Execution Modes
 
-```c
-static int64_t* native_add2(int64_t* sp) {
-  // Stack top is last pushed value.
-  // Onda: 3 4 add2  => *sp=4, *(sp+1)=3
-  *(sp + 1) = *(sp + 1) + *sp;
-  return sp + 1; // consumed 2, produced 1
-}
+You can run source directly for fast iteration, then switch to bytecode when
+you want a build artifact.
 
-// During env setup:
-onda_env_register_native_fn(&env, "add2", native_add2, 2, 1);
-```
-
-Then call from Onda:
-
-```onda
-: main 3 4 add2 . ;
-```
-
-### Interop conventions
-
-- Onda resolves unknown identifiers against native function registry.
-- `args_count` and `returns_count` are metadata used by the VM/compiler ecosystem.
-- Keep stack discipline correct in native callbacks, or runtime behavior will break.
-
-## 12. Running programs
-
-Build compiler:
+Build tools:
 
 ```bash
 make
@@ -313,27 +333,17 @@ Run source:
 Build bytecode:
 
 ```bash
-./bin/ondac build examples/fibonacci.onda /tmp/fib.onbc
+./bin/ondac build examples/hello_world.onda /tmp/hello.onbc
 ```
 
 Execute bytecode:
 
 ```bash
-./bin/ondac exec /tmp/fib.onbc
+./bin/ondac exec /tmp/hello.onbc
 ```
 
-Useful flags:
-- `--time`
-- `--print-bytecode`
-- `--no-jit` (for `run`/`exec`)
+VM-only execution (disable JIT):
 
-## 13. Practical learning path from repo examples
-
-1. `examples/hello_world.onda` (word + string output)
-2. `examples/words2.onda` (basic stack math)
-3. `examples/words_with_args*.onda` (args, locals, `->`)
-4. `examples/if_statement_example.onda` (conditionals)
-5. `examples/count_down.onda` (while loop)
-6. `examples/fibonacci.onda` + `run_fibonacci.onda` (composition/import)
-7. `examples/memory*.onda` (memory ops)
-8. `examples/file_test.onda` / `sudoku.onda` (C stdlib interop usage)
+```bash
+./bin/ondac run --no-jit examples/hello_world.onda
+```

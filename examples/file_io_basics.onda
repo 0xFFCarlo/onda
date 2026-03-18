@@ -1,0 +1,12 @@
+: main ( | fp )
+  "/tmp/onda_example.txt" "w" fopen -> fp
+  if fp not then
+    "failed to open file\n" .s
+    1 exit
+  end
+
+  "hello from onda\n" 1 16 fp fwrite drop
+  fp fclose drop
+
+  "wrote /tmp/onda_example.txt\n" .s
+;

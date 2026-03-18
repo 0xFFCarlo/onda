@@ -1,0 +1,10 @@
+: hypot2 ( a b | aa bb )
+  a a * -> aa
+  b b * -> bb
+  aa bb +
+;
+
+: main
+  3 4 hypot2 .
+  "\n" .s
+;

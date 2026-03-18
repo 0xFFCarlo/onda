@@ -1,0 +1,120 @@
+: print_board ( board | i j )
+  "Board:\n" .s
+  0 -> i while i 9 < do
+    0 -> j while j 9 < do
+      board i 9 * j + + b@
+      if dup 0 == then drop "." .s else . end
+      " " .s
+      j ++ -> j
+    end
+    "\n" .s
+    i ++ -> i
+  end
+  "" .s
+;
+
+: load_sudoku ( filename | board fp i j cell char )
+  filename "r" fopen -> fp
+  if fp not then "Error opening file\n" .s exit end
+
+  9 9 * malloc -> board
+  board 0 9 9 * memset
+  1 malloc -> char
+
+  0 -> i while i 9 < do
+    0 -> j while j 9 < do
+      board i 9 * j + + -> cell
+      if char 1 1 fp fread not then "Error reading file\n" .s exit end
+      if char b@ 48 < char b@ 48 9 + > or then
+        continue
+      end
+      char b@ 48 - cell b!
+      j ++ -> j
+    end
+    i ++ -> i
+  end
+
+  char free
+  fp fclose
+  board
+;
+
+: can_place ( board row col num | x y row0 col0 valid )
+  1 -> valid
+
+  0 -> x while x 9 < do
+    if valid then
+      if board row 9 * x + + b@ num == then
+        0 -> valid
+      end
+    end
+    x ++ -> x
+  end
+
+  0 -> x while x 9 < do
+    if valid then
+      if board x 9 * col + + b@ num == then
+        0 -> valid
+      end
+    end
+    x ++ -> x
+  end
+
+  row 3 / 3 * -> row0
+  col 3 / 3 * -> col0
+  0 -> x while x 3 < do
+    0 -> y while y 3 < do
+      if valid then
+        if board row0 x + 9 * col0 y + + + b@ num == then
+          0 -> valid
+        end
+      end
+      y ++ -> y
+    end
+    x ++ -> x
+  end
+
+  valid
+;
+
+: solve_sudoku ( board pos | row col cell num solved )
+  if pos 9 9 * == then
+    1
+  else
+    pos 9 / -> row
+    pos 9 % -> col
+    board row 9 * col + + -> cell
+
+    if cell b@ 0 != then
+      board pos 1 + solve_sudoku
+    else
+      0 -> solved
+      1 -> num
+      while num 9 <= do
+        if solved not then
+          if board row col num can_place then
+            num cell b!
+            if board pos 1 + solve_sudoku then
+              1 -> solved
+            else
+              0 cell b!
+            end
+          end
+        end
+        num ++ -> num
+      end
+      solved
+    end
+  end
+;
+
+: main
+  "examples/sudoku.txt" load_sudoku
+  dup print_board
+
+  dup 0 solve_sudoku drop
+  "Solved:\n" .s
+  dup print_board
+
+  free
+;

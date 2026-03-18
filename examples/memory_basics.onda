@@ -1,0 +1,7 @@
+: main ( | ptr )
+  16 malloc -> ptr
+  42 ptr !
+  ptr @ .
+  "\n" .s
+  ptr free
+;

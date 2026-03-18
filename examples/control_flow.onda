@@ -1,0 +1,17 @@
+: sum_odd_to ( n | acc )
+  0 -> acc
+  while n 0 > do
+    if n 2 % 0 == then
+      n -- -> n
+      continue
+    end
+    acc n + -> acc
+    n -- -> n
+  end
+  acc
+;
+
+: main
+  10 sum_odd_to .
+  "\n" .s
+;

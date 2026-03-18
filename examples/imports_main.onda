@@ -1,0 +1,8 @@
+import "imports_math.onda"
+
+: main
+  5 square .
+  " " .s
+  3 cube .
+  "\n" .s
+;
