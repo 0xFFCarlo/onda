@@ -281,9 +281,9 @@ static int64_t* onda_strtoul(int64_t* sp) {
 }
 
 static int64_t* onda_exit(int64_t* sp) {
-  int64_t code = *sp;
-  exit((int)code);
-  return sp + 1; // never reached
+  fprintf(stderr, "Error: 'exit' is not supported in this runtime\n");
+  (void)sp;
+  return NULL;
 }
 
 static int64_t* onda_assert(int64_t* sp) {
@@ -291,7 +291,7 @@ static int64_t* onda_assert(int64_t* sp) {
   const int64_t cond = *(sp + 1);
   if (!cond) {
     fprintf(stderr, "Assertion failed: %s\n", msg ? msg : "(null)");
-    exit(1);
+    return NULL;
   }
   return sp + 2;
 }

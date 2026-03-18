@@ -586,6 +586,7 @@ static int onda_compile_while(onda_lexer_t* lexer,
   return 0;
 }
 
+#if ONDA_HAS_FILESYSTEM
 static char* read_file(const char* filepath, size_t* out_size) {
   FILE* f = fopen(filepath, "rb");
   if (!f)
@@ -612,6 +613,7 @@ static char* read_file(const char* filepath, size_t* out_size) {
   *out_size = read_size;
   return buffer;
 }
+#endif
 
 static int onda_compile_store_local(onda_lexer_t* lexer,
                                     onda_env_t* env,
@@ -635,6 +637,7 @@ static int onda_compile_store_local(onda_lexer_t* lexer,
   return 0;
 }
 
+#if ONDA_HAS_FILESYSTEM
 static int onda_compile_import(onda_lexer_t* lexer,
                                onda_env_t* env,
                                onda_code_obj_t* cobj) {
@@ -656,6 +659,7 @@ static int onda_compile_import(onda_lexer_t* lexer,
 
   return onda_compile_file(path, lexer, env, cobj);
 }
+#endif
 
 static int onda_compile_continue(onda_lexer_t* lexer,
                                  onda_env_t* env,
@@ -726,7 +730,9 @@ static const onda_imm_word_t imm_words[] = {
     {"if", .handler = onda_compile_if},
     {"while", .handler = onda_compile_while},
     {"continue", .handler = onda_compile_continue},
+#if ONDA_HAS_FILESYSTEM
     {"import", .handler = onda_compile_import},
+#endif
 };
 static const size_t num_imm_words = sizeof(imm_words) / sizeof(imm_words[0]);
 
@@ -1112,6 +1118,7 @@ int onda_compile_file(const char* filepath,
                       onda_lexer_t* lexer,
                       onda_env_t* env,
                       onda_code_obj_t* cobj) {
+#if ONDA_HAS_FILESYSTEM
   char filename[ONDA_MAX_FILENAME_LEN];
   char resolved_path[ONDA_MAX_FILEPATH_LEN];
   char* import_src = NULL;
@@ -1208,6 +1215,13 @@ cleanup:
   lexer->pos = prev_pos;
 
   return rc;
+#else
+  (void)filepath;
+  (void)env;
+  (void)cobj;
+  print_err(lexer, "File compilation is not supported without filesystem\n");
+  return -1;
+#endif
 }
 
 int onda_code_obj_init(onda_code_obj_t* cobj, size_t initial_capacity) {

@@ -352,7 +352,7 @@ op_push_const_pool_ptr_u32 : {
   pc += sizeof(uint32_t);
   if (!vm->runtime.const_pool || offset >= vm->runtime.const_pool_size) {
     fprintf(stderr, "Error: constant pool offset out of bounds\n");
-    exit(1);
+    return -1;
   }
   sp--;
   *sp = (int64_t)(uintptr_t)(vm->runtime.const_pool + offset);
@@ -472,12 +472,12 @@ op_call_native : {
   const onda_native_registry_t* native_registry = vm->runtime.native_registry;
   if (native_registry == NULL) {
     fprintf(stderr, "Error: native function registry not set in VM\n");
-    exit(1);
+    return -1;
   }
   int64_t* new_ds = native_registry->items[idx].fn(sp);
   if (new_ds == NULL) { // Check for errors
     fprintf(stderr, "Error: native function returned NULL\n");
-    exit(1);
+    return -1;
   }
   sp = new_ds;
   DISPATCH();
