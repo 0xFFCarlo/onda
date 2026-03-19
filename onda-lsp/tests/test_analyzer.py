@@ -55,6 +55,41 @@ class AnalyzerTests(unittest.TestCase):
         messages = [d.message for d in result.diagnostics]
         self.assertTrue(any("Nested word definition not allowed" in m for m in messages))
 
+    def test_reports_control_marker_mismatches(self) -> None:
+        src = ": main then else do ;\n"
+        result = analyze(src)
+        messages = [d.message for d in result.diagnostics]
+        self.assertTrue(any("Unexpected 'then'" in m for m in messages))
+        self.assertTrue(any("Unexpected 'else'" in m for m in messages))
+        self.assertTrue(any("Unexpected 'do'" in m for m in messages))
+
+    def test_reports_missing_then_and_do(self) -> None:
+        src = ": main if 1 end while 1 end ;\n"
+        result = analyze(src)
+        messages = [d.message for d in result.diagnostics]
+        self.assertTrue(any("Missing 'then' for 'if' block" in m for m in messages))
+        self.assertTrue(any("Missing 'do' for 'while' block" in m for m in messages))
+
+    def test_reports_unexpected_signature_tokens_in_expression(self) -> None:
+        src = ": main ( a ) a ;\n"
+        result = analyze(src)
+        messages = [d.message for d in result.diagnostics]
+        self.assertTrue(any("main word cannot declare arguments" in m for m in messages))
+
+    def test_reports_alias_cannot_declare_locals(self) -> None:
+        src = ":: bad ( a ) a ;\n: main 1 bad ;\n"
+        result = analyze(src)
+        messages = [d.message for d in result.diagnostics]
+        self.assertTrue(
+            any("Alias 'bad' cannot declare arguments or local variables" in m for m in messages)
+        )
+
+    def test_reports_reserved_char_in_word_name(self) -> None:
+        src = ": foo|bar 1 ;\n: main foo|bar ;\n"
+        result = analyze(src)
+        messages = [d.message for d in result.diagnostics]
+        self.assertTrue(any("Word name 'foo|bar' cannot contain '|'" in m for m in messages))
+
 
 if __name__ == "__main__":
     unittest.main()
