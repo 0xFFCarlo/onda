@@ -17,14 +17,14 @@
 #define ONDA_MCODE_INIT_CAP     512
 #define ONDA_MAX_OP_INSTR_COUNT 6 // max instructions per opcode
 
-#define AA64_PUSH_X0_STACK  (0xF81F8E60u)            // str x0, [x19, #-8]!
-#define AA64_POP_STACK(x)   (0xF8408660u | ((x)&31)) // ldr xN, [x19], #8
-#define AA64_STORE_X0_STACK 0xF9000260u              // str x0, [x19]
-#define AA64_LOAD_STACK(x)  (0xF9400260u | ((x)&31)) // ldr xN, [x19]
-#define AA64_BLR(reg)       (0xD63F0000u | (((reg)&31u) << 5)) // blr xN
-#define AA64_B(imm26)       (0x14000000u | ((uint32_t)(imm26)&0x03FFFFFFu))
+#define AA64_PUSH_X0_STACK  (0xF81F8E60u)              // str x0, [x19, #-8]!
+#define AA64_POP_STACK(x)   (0xF8408660u | ((x) & 31)) // ldr xN, [x19], #8
+#define AA64_STORE_X0_STACK 0xF9000260u                // str x0, [x19]
+#define AA64_LOAD_STACK(x)  (0xF9400260u | ((x) & 31)) // ldr xN, [x19]
+#define AA64_BLR(reg)       (0xD63F0000u | (((reg) & 31u) << 5)) // blr xN
+#define AA64_B(imm26)       (0x14000000u | ((uint32_t)(imm26) & 0x03FFFFFFu))
 #define AA64_CBZ(reg, imm19)                                                   \
-  (0xB4000000u | ((((uint32_t)(imm19)) & 0x7FFFFu) << 5) | ((reg)&31u))
+  (0xB4000000u | ((((uint32_t)(imm19)) & 0x7FFFFu) << 5) | ((reg) & 31u))
 #define AA64_RET             (0xD65F03C0)                 // ret
 #define AA64_MOV(x, y)       (0xAA0003E0 | (y << 16) | x) // mov xX, xY
 #define AA64_ADD(dst, a, b)  (0x8B000000 | ((b) << 16) | ((a) << 5) | dst)
@@ -33,8 +33,8 @@
 #define AA64_SDIV(dst, a, b) (0x9AC00C00 | ((b) << 16) | ((a) << 5) | dst)
 #define AA64_UDIV(dst, a, b) (0x9AC00800 | ((b) << 16) | ((a) << 5) | dst)
 #define AA64_MSUB(dst, n, m, a)                                                \
-  (0x9B008000 | (((m)&31u) << 16) | (((a)&31u) << 10) | (((n)&31u) << 5) |     \
-   ((dst)&31u))
+  (0x9B008000 | (((m) & 31u) << 16) | (((a) & 31u) << 10) |                    \
+   (((n) & 31u) << 5) | ((dst) & 31u))
 #define AA64_INC_X0          (0x91000400) // add x0, x0, #1
 #define AA64_DEC_X0          (0xD1000400) // sub x0, x0, #1
 #define AA64_AND(dst, a, b)  (0x8A000000 | ((b) << 16) | ((a) << 5) | dst)
@@ -44,14 +44,14 @@
 #define AA64_LSLV(dst, a, b) (0x9AC02000 | ((b) << 16) | ((a) << 5) | dst)
 #define AA64_ASRV(dst, a, b) (0x9AC02800 | ((b) << 16) | ((a) << 5) | dst)
 #define AA64_CMP_X0_0        (0xF100001F) // cmp x0, #0
-#define AA64_CMP(n, m)       (0xEB00001Fu | (((m)&31u) << 16) | (((n)&31u) << 5))
-#define AA64_CSET_NE(rd)     (0x9A9F07E0 | ((rd)&31u)) // cset xD, ne
-#define AA64_CSET_X0_NE      (0x9A9F07E0)              // cset x0, ne
-#define AA64_CSET_X0_EQ      (0x9A9F17E0)              // cset x0, eq
-#define AA64_CSET_X0_LT      (0x9A9FA7E0)              // cset x0, lt
-#define AA64_CSET_X0_GT      (0x9A9FD7E0)              // cset x0, gt
-#define AA64_CSET_X0_LTE     (0x9A9FC7E0)              // cset x0, le
-#define AA64_CSET_X0_GTE     (0x9A9FB7E0)              // cset x0, ge
+#define AA64_CMP(n, m)       (0xEB00001Fu | (((m) & 31u) << 16) | (((n) & 31u) << 5))
+#define AA64_CSET_NE(rd)     (0x9A9F07E0 | ((rd) & 31u)) // cset xD, ne
+#define AA64_CSET_X0_NE      (0x9A9F07E0)                // cset x0, ne
+#define AA64_CSET_X0_EQ      (0x9A9F17E0)                // cset x0, eq
+#define AA64_CSET_X0_LT      (0x9A9FA7E0)                // cset x0, lt
+#define AA64_CSET_X0_GT      (0x9A9FD7E0)                // cset x0, gt
+#define AA64_CSET_X0_LTE     (0x9A9FC7E0)                // cset x0, le
+#define AA64_CSET_X0_GTE     (0x9A9FB7E0)                // cset x0, ge
 // move 16-bit immediate into 64-bit register and zero other bits
 #define AA64_MOVZ(dst, imm16, shift)                                           \
   (0xD2800000 | (((shift) / 16) << 21) | ((uint32_t)(imm16) << 5) | (dst))
@@ -61,43 +61,47 @@
 // Add or Subtract 12-bit immediate to register, keeping other bits (shift must
 // be 0)
 #define AA64_ADDI(dst, src, imm12)                                             \
-  (0x91000000u | (((imm12)&0xFFFu) << 10) | (((src)&31u) << 5) | ((dst)&31u))
+  (0x91000000u | (((imm12) & 0xFFFu) << 10) | (((src) & 31u) << 5) |           \
+   ((dst) & 31u))
 #define AA64_SUBI(dst, src, imm12)                                             \
-  (0xD1000000u | (((imm12)&0xFFFu) << 10) | (((src)&31u) << 5) | ((dst)&31u))
+  (0xD1000000u | (((imm12) & 0xFFFu) << 10) | (((src) & 31u) << 5) |           \
+   ((dst) & 31u))
 // 8-bit: STRB/LDRB (offset in bytes, no alignment requirement)
 #define AA64_STRBU(rt, rn, off_bytes)                                          \
-  (0x39000000u | (((off_bytes)&0xFFFu) << 10) | (((rn)&31u) << 5) | ((rt)&31u))
+  (0x39000000u | (((off_bytes) & 0xFFFu) << 10) | (((rn) & 31u) << 5) |        \
+   ((rt) & 31u))
 #define AA64_LDRBU(rt, rn, off_bytes)                                          \
-  (0x39400000u | (((off_bytes)&0xFFFu) << 10) | (((rn)&31u) << 5) | ((rt)&31u))
+  (0x39400000u | (((off_bytes) & 0xFFFu) << 10) | (((rn) & 31u) << 5) |        \
+   ((rt) & 31u))
 
 // 16-bit: STRH/LDRH (offset in bytes, must be multiple of 2)
 #define AA64_STRHU(rt, rn, off_bytes)                                          \
-  (0x79000000u | ((((off_bytes) >> 1) & 0xFFFu) << 10) | (((rn)&31u) << 5) |   \
-   ((rt)&31u))
+  (0x79000000u | ((((off_bytes) >> 1) & 0xFFFu) << 10) | (((rn) & 31u) << 5) | \
+   ((rt) & 31u))
 #define AA64_LDRHU(rt, rn, off_bytes)                                          \
-  (0x79400000u | ((((off_bytes) >> 1) & 0xFFFu) << 10) | (((rn)&31u) << 5) |   \
-   ((rt)&31u))
+  (0x79400000u | ((((off_bytes) >> 1) & 0xFFFu) << 10) | (((rn) & 31u) << 5) | \
+   ((rt) & 31u))
 
 // 32-bit: STR/LDR (Wt) (offset in bytes, must be multiple of 4)
 #define AA64_STRWU(rt, rn, off_bytes)                                          \
-  (0xB9000000u | ((((off_bytes) >> 2) & 0xFFFu) << 10) | (((rn)&31u) << 5) |   \
-   ((rt)&31u))
+  (0xB9000000u | ((((off_bytes) >> 2) & 0xFFFu) << 10) | (((rn) & 31u) << 5) | \
+   ((rt) & 31u))
 #define AA64_LDRWU(rt, rn, off_bytes)                                          \
-  (0xB9400000u | ((((off_bytes) >> 2) & 0xFFFu) << 10) | (((rn)&31u) << 5) |   \
-   ((rt)&31u))
+  (0xB9400000u | ((((off_bytes) >> 2) & 0xFFFu) << 10) | (((rn) & 31u) << 5) | \
+   ((rt) & 31u))
 
 // 64-bit STR/LDR unsigned immediate, offset in BYTES (must be multiple of 8)
 #define AA64_STRU(rt, rn, off_bytes)                                           \
-  (0xF9000000u | ((((off_bytes) >> 3) & 0xFFFu) << 10) | (((rn)&31u) << 5) |   \
-   ((rt)&31u))
+  (0xF9000000u | ((((off_bytes) >> 3) & 0xFFFu) << 10) | (((rn) & 31u) << 5) | \
+   ((rt) & 31u))
 #define AA64_LDRU(rt, rn, off_bytes)                                           \
-  (0xF9400000u | ((((off_bytes) >> 3) & 0xFFFu) << 10) | (((rn)&31u) << 5) |   \
-   ((rt)&31u))
+  (0xF9400000u | ((((off_bytes) >> 3) & 0xFFFu) << 10) | (((rn) & 31u) << 5) | \
+   ((rt) & 31u))
 
 // Put address of nearby instruction into register, in bytes
 #define AA64_ADR(rd, imm21)                                                    \
   (0x10000000u | ((((uint32_t)(imm21)) & 0x3u) << 29) |                        \
-   (((((uint32_t)(imm21)) >> 2) & 0x7FFFFu) << 5) | ((rd)&31u))
+   (((((uint32_t)(imm21)) >> 2) & 0x7FFFFu) << 5) | ((rd) & 31u))
 #define AA64_LOCAL_REG(i) (9u + (uint32_t)(i))
 
 #if ONDA_LOCAL_REG_COUNT > 8
@@ -552,9 +556,9 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
       EMIT(AA64_MOV(6, FS_REG)); // store frame pointer in x6
       // Reserve frame slots for return metadata, saved local regs, and
       // spilled locals. Register-resident locals reuse the saved-reg slots.
-      const uint32_t frame_slots = 2u + (locals > ONDA_LOCAL_REG_COUNT
-                                             ? (uint32_t)locals
-                                             : (uint32_t)ONDA_LOCAL_REG_COUNT);
+      const uint32_t frame_slots =
+          2u + (locals > ONDA_LOCAL_REG_COUNT ? (uint32_t)locals
+                                              : (uint32_t)ONDA_LOCAL_REG_COUNT);
       const uint32_t frame_bytes = frame_slots * 8u;
       if (frame_bytes <= 4095) {
         EMIT(AA64_SUBI(FS_REG, FS_REG, frame_bytes));
@@ -636,7 +640,7 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
   *out_machine_code_size = mcode_size * sizeof(uint32_t);
 
   return 0;
-jit_fail : {
+jit_fail: {
   onda_unresolved_jump_t* uj = unresolved_jumps;
   while (uj) {
     onda_unresolved_jump_t* next = uj->next;
