@@ -902,6 +902,13 @@ static int onda_compile_word(onda_lexer_t* lexer,
       onda_token_next(lexer, &tok); // consume ';'
       break;
     }
+    if (tok.type == TOKEN_EOF) {
+      print_err(lexer,
+                "Word definition '%.*s' is missing terminating ';'\n",
+                (int)word.name_len,
+                word.name);
+      return -1;
+    }
     if (tok.type == TOKEN_COLON) {
       print_err(lexer,
                 "Nested word definition not allowed for word '%.*s'",
