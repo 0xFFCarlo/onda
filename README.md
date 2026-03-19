@@ -1,23 +1,41 @@
 # Onda
 
-**A tiny stack language for people who like control, speed, and small code.**
+**A tiny stack language with a JIT-first runtime and a small implementation.**
 
 Onda is a low-level, Forth-inspired language with a practical toolchain:
 - source compiler to bytecode
-- VM runtime
-- optional JIT backends
+- JIT execution by default on arm64 and x86-64
+- VM execution for fallback and debugging
 - imports, locals, control flow, and C-backed stdlib words
 
-Onda is designed to stay simple enough to read end-to-end and fast enough to
-use for real applications.
+Onda is built for people who want direct control, fast execution, and a
+language implementation that stays small. The whole language and toolchain
+currently fit in roughly 4-5k lines of code.
 
 ## Why Onda
 
-- **Small mental model**: explicit stack behavior, left-to-right execution
-- **Low-level power**: integer ops, memory access, C stdlib interop
-- **Fast workflow**: run source, build bytecode, or execute bytecode
-- **Performance path**: optional JIT
-- **Tiny codebase**: built to remain understandable and hackable
+- **JIT-first execution**: the normal path is compiled machine code, not an interpreter
+- **VM fallback**: `--no-jit` is there for portability, debugging, and comparison
+- **Low-level control**: integer ops, memory access, explicit stack behavior
+- **Real toolchain**: run source, build bytecode, or execute bytecode directly
+- **Small codebase**: core language and runtime stay in the 4-5k LOC range
+
+## First Look
+
+```onda
+: main "hello, onda\n" .s ;
+```
+
+Run it:
+
+```bash
+./bin/ondac run -e ': main "hello, onda\n" .s ;'
+```
+
+What this project is aiming for:
+- a compact stack language with real control flow and locals
+- bytecode as a stable compilation target
+- JIT as the preferred runtime path
 
 ## Quick Start
 
@@ -27,13 +45,19 @@ Build:
 make
 ```
 
-Run a program:
+Run a program with the default JIT path:
 
 ```bash
 ./bin/ondac run examples/hello_world.onda
 ```
 
-Build bytecode + execute:
+Run the same program on the VM:
+
+```bash
+./bin/ondac run --no-jit examples/hello_world.onda
+```
+
+Build bytecode + execute it:
 
 ```bash
 ./bin/ondac build examples/hello_world.onda /tmp/hello.onbc
@@ -70,7 +94,13 @@ ondac exec  [--no-jit] [--time] [--print-bytecode] <bytecode_file>
 Inline source example:
 
 ```bash
-./bin/ondac run -e ':main "Hello from inline source\n" .s ;'
+./bin/ondac run -e ': main "Hello from inline source\n" .s ;'
+```
+
+Use the VM instead of the JIT:
+
+```bash
+./bin/ondac run --no-jit examples/hello_world.onda
 ```
 
 ## Learn
@@ -88,6 +118,11 @@ Advanced demos:
 - `./bin/ondac run examples/run_fibonacci.onda`
 - `./bin/ondac run examples/sudoku_solver.onda`
 - `./bin/ondac run examples/benchmark_1.onda`
+
+If you want the fastest sense of what Onda can do, start with:
+- `examples/control_flow.onda`
+- `examples/file_io_basics.onda`
+- `examples/sudoku_solver.onda`
 
 ## Install
 
@@ -107,11 +142,12 @@ make uninstall
 
 Onda is **mostly feature complete**.
 
-Current priority is not adding large new subsystems, but improving quality:
-- fix bugs
-- improve docs/examples
-- sharpen performance and implementation details
-- keep behavior stable and predictable
+The direction is to keep the language small, keep JIT execution as the default,
+and improve the parts that matter in practice:
+- fix bugs and edge cases
+- improve docs and examples
+- sharpen code generation and runtime behavior
+- keep semantics stable and predictable
 
 ## Contributing
 
@@ -151,3 +187,6 @@ tests/       C test suite
 onda-lsp/    standalone Python language server
 vim/         editor integration files
 ```
+
+If you want to inspect the implementation quickly, start in `src/main.c` for
+the CLI, then move to the compiler, VM, and JIT sources under `src/`.
