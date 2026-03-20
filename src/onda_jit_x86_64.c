@@ -353,13 +353,25 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
       READ_BCODE(uint32_t, offset);
       if (!rt->const_pool || offset >= rt->const_pool_size) {
         printf("Error: Constant pool offset out of bounds in x86_64 JIT\n");
-        return -1;
+        goto jit_fail;
       }
       const uint64_t val =
           (uint64_t)(uintptr_t)(rt->const_pool + (size_t)offset);
       EMIT_PUSH_RAX_DS;
       EMITV(0x48, 0xB8); // mov rax, imm64
       EMIT_IMM64(val);
+    } break;
+    case ONDA_OP_PUSH_INSTRUCTION_ADDR: {
+      uint32_t target_bpos = 0;
+      READ_BCODE(uint32_t, target_bpos);
+      if (target_bpos >= bytecode_size || bcode_to_mcode[target_bpos] < 0) {
+        printf("Error: unresolved instruction address at bytecode %u\n",
+               target_bpos);
+        goto jit_fail;
+      }
+      EMIT_PUSH_RAX_DS;
+      EMIT(0xB8); // mov eax, imm32 (machine-code byte offset from start)
+      EMIT_IMM32((uint32_t)bcode_to_mcode[target_bpos]);
     } break;
 
     case ONDA_OP_PUSH_LOCAL: {
@@ -617,6 +629,20 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
       EMIT_JUMP_REL32_OR_UNRESOLVED(ONDA_OP_JUMP_IF_FALSE, jmp_offset);
       bcode_pos += sizeof(jmp_offset);
     } break;
+    case ONDA_OP_JUMP_TO_TOS: {
+      // Bytecode semantic is absolute instruction address; in JIT we push
+      // machine-code byte offsets and reconstruct the absolute pointer here.
+      EMITV(0x48, 0x89, 0xC1); // mov rcx, rax (target offset)
+      EMIT_POP_DS_RAX;         // pop new TOS
+      {
+        // lea rdx, [rip + disp32] -> function start (offset 0)
+        const int32_t disp_to_start = -(int32_t)(mcode_size + 7);
+        EMITV(0x48, 0x8D, 0x15);
+        EMIT_IMM32((uint32_t)disp_to_start);
+      }
+      EMITV(0x48, 0x01, 0xD1); // add rcx, rdx
+      EMITV(0xFF, 0xE1);       // jmp rcx
+    } break;
 
     case ONDA_OP_CALL_NATIVE: {
       uint32_t idx;
@@ -705,9 +731,7 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
       EMIT(0xE9);
       if (bcode_to_mcode[target_bpos] == -1) {
         printf("Error: Unresolved CALL target at bcode_pos %zu\n", bcode_pos);
-        onda_free(mcode);
-        onda_free(bcode_to_mcode);
-        return -1;
+        goto jit_fail;
       }
       {
         const int32_t rel32 = (int32_t)((int64_t)bcode_to_mcode[target_bpos] -
@@ -735,7 +759,7 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
 
     default:
       printf("Error: Unimplemented opcode %02X in x86_64 JIT\n", opcode);
-      break;
+      goto jit_fail;
     }
   }
 
@@ -756,6 +780,17 @@ size_t onda_jit_x86_64(const onda_runtime_t* rt,
   *out_machine_code = mcode;
   *out_machine_code_size = mcode_size;
   return 0;
+jit_fail: {
+  onda_unresolved_jump_t* uj = unresolved_jumps;
+  while (uj) {
+    onda_unresolved_jump_t* next = uj->next;
+    onda_free(uj);
+    uj = next;
+  }
+  onda_free(mcode);
+  onda_free(bcode_to_mcode);
+  return -1;
+}
 }
 
 #endif // defined(__x86_64__)

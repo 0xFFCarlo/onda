@@ -148,6 +148,10 @@ static const test_case_t tests[] = {
     {"0 while dup 10 < do ++ if dup 9 != then continue end 10 * end ret",
      1,
      90},
+    // Computed jump via label address (backward jump loop).
+    {": main ( | i ) 0 -> i label loop i 1 + -> i if i 5 < then loop jump end i ;",
+     1,
+     5},
     // Single loop: sum 1..10 but skip 5 using continue
     {"0 10 while dup 0 > do "
      "if dup 5 == then -- continue end "

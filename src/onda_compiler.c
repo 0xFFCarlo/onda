@@ -1,7 +1,7 @@
 #include "onda_compiler.h"
-#include "onda_optimizer.h"
 
 #include "onda_dict.h"
+#include "onda_optimizer.h"
 #include "onda_util.h"
 #include "onda_vm.h"
 
@@ -11,6 +11,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static int validate_name_availability(onda_lexer_t* lexer,
+                                      onda_env_t* env,
+                                      onda_code_obj_t* cobj,
+                                      const onda_token_t* tok,
+                                      const char* symbol_kind);
 
 static inline char curr(onda_lexer_t* lx) {
   return lx->src[lx->pos];
@@ -340,7 +346,7 @@ int onda_code_obj_emit_opcode(onda_code_obj_t* cobj, uint8_t opcode) {
 
 #define CODE_PUSH_BYTE(val)                                                    \
   do {                                                                         \
-    if (onda_code_obj_emit_u8(cobj, (uint8_t)(val)) != 0) {                   \
+    if (onda_code_obj_emit_u8(cobj, (uint8_t)(val)) != 0) {                    \
       fprintf(stderr, "Code buffer overflow\n");                               \
       return -1;                                                               \
     }                                                                          \
@@ -348,7 +354,7 @@ int onda_code_obj_emit_opcode(onda_code_obj_t* cobj, uint8_t opcode) {
 
 #define CODE_PUSH_BYTES(src, len)                                              \
   do {                                                                         \
-    if (onda_code_obj_emit_bytes(cobj, (src), (len)) != 0) {                  \
+    if (onda_code_obj_emit_bytes(cobj, (src), (len)) != 0) {                   \
       fprintf(stderr, "Code buffer overflow\n");                               \
       return -1;                                                               \
     }                                                                          \
@@ -356,7 +362,7 @@ int onda_code_obj_emit_opcode(onda_code_obj_t* cobj, uint8_t opcode) {
 
 #define CODE_PUSH_OPCODE(op)                                                   \
   do {                                                                         \
-    if (onda_code_obj_emit_opcode(cobj, (op)) != 0) {                         \
+    if (onda_code_obj_emit_opcode(cobj, (op)) != 0) {                          \
       fprintf(stderr, "Code buffer overflow\n");                               \
       return -1;                                                               \
     }                                                                          \
@@ -678,6 +684,23 @@ static int onda_compile_continue(onda_lexer_t* lexer,
   return 0;
 }
 
+static int onda_compile_label(onda_lexer_t* lexer,
+                              onda_env_t* env,
+                              onda_code_obj_t* cobj) {
+  (void)env; // unused arg
+  onda_token_t tok;
+  onda_token_next(lexer, &tok);
+  if (tok.type != TOKEN_IDENTIFIER) {
+    print_err(lexer, "Expected label name after 'label'");
+    return -1;
+  }
+  // Check if it is valid name and not conflicting with imm words or builtins
+  if (validate_name_availability(lexer, env, cobj, &tok, "label") != 0)
+    return -1;
+  onda_dict_put(&cobj->labels_map, tok.start, tok.len, cobj->size);
+  return 0;
+}
+
 typedef int (*imm_word_handler_t)(onda_lexer_t* lexer,
                                   onda_env_t* env,
                                   onda_code_obj_t* cobj);
@@ -718,6 +741,7 @@ static const onda_imm_word_t imm_words[] = {
     {"rot", ONDA_OP_ROT, .handler = NULL},
     {"swap", ONDA_OP_SWAP, .handler = NULL},
     {"ret", ONDA_OP_RET, .handler = NULL},
+    {"jump", ONDA_OP_JUMP_TO_TOS, .handler = NULL},
     {"b@", ONDA_OP_PUSH_FROM_ADDR_B, .handler = NULL},
     {"b!", ONDA_OP_STORE_TO_ADDR_B, .handler = NULL},
     {"h@", ONDA_OP_PUSH_FROM_ADDR_HW, .handler = NULL},
@@ -730,6 +754,7 @@ static const onda_imm_word_t imm_words[] = {
     {"if", .handler = onda_compile_if},
     {"while", .handler = onda_compile_while},
     {"continue", .handler = onda_compile_continue},
+    {"label", .handler = onda_compile_label},
 #if ONDA_HAS_FILESYSTEM
     {"import", .handler = onda_compile_import},
 #endif
@@ -809,6 +834,14 @@ static int validate_name_availability(onda_lexer_t* lexer,
               tok->start);
     return -1;
   }
+  if (onda_dict_get(&cobj->labels_map, tok->start, tok->len, &id) == 0) {
+    print_err(lexer,
+              "%s name '%.*s' conflicts with label name\n",
+              symbol_kind,
+              tok->len,
+              tok->start);
+    return -1;
+  }
 
   return 0;
 }
@@ -818,8 +851,11 @@ static int validate_symbol_name(onda_lexer_t* lexer,
                                 onda_code_obj_t* cobj,
                                 const onda_token_t* tok,
                                 bool is_alias) {
-  return validate_name_availability(
-      lexer, env, cobj, tok, is_alias ? "Alias" : "Word");
+  return validate_name_availability(lexer,
+                                    env,
+                                    cobj,
+                                    tok,
+                                    is_alias ? "Alias" : "Word");
 }
 
 static int onda_compile_word(onda_lexer_t* lexer,
@@ -1055,6 +1091,16 @@ static int onda_compile_expr(onda_lexer_t* lexer,
       return 0;
     }
 
+    // Is it a label?
+    uint64_t label_offset;
+    if (onda_dict_get(&cobj->labels_map, tok.start, tok.len, &label_offset) ==
+        0) {
+      CODE_PUSH_OPCODE(ONDA_OP_PUSH_INSTRUCTION_ADDR);
+      uint32_t offset = (uint32_t)label_offset;
+      CODE_PUSH_BYTES(&offset, sizeof(uint32_t));
+      return 0;
+    }
+
     // Is it a native function call?
     uint64_t func_id;
     if (onda_dict_get(&env->native_registry.items_map,
@@ -1243,6 +1289,7 @@ int onda_code_obj_init(onda_code_obj_t* cobj, size_t initial_capacity) {
   cobj->const_pool_capacity = 0;
   onda_dict_init(&cobj->words_map);
   onda_dict_init(&cobj->aliases_map);
+  onda_dict_init(&cobj->labels_map);
   cobj->words = NULL;
   cobj->words_count = 0;
   cobj->aliases = NULL;
@@ -1260,6 +1307,7 @@ void onda_code_obj_free(onda_code_obj_t* cobj) {
     onda_free(cobj->const_pool);
   onda_dict_free(&cobj->words_map);
   onda_dict_free(&cobj->aliases_map);
+  onda_dict_free(&cobj->labels_map);
   if (cobj->words)
     free(cobj->words);
   if (cobj->aliases) {

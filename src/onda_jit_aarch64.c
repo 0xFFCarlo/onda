@@ -22,6 +22,7 @@
 #define AA64_STORE_X0_STACK 0xF9000260u                // str x0, [x19]
 #define AA64_LOAD_STACK(x)  (0xF9400260u | ((x) & 31)) // ldr xN, [x19]
 #define AA64_BLR(reg)       (0xD63F0000u | (((reg) & 31u) << 5)) // blr xN
+#define AA64_BR(reg)        (0xD61F0000u | (((reg) & 31u) << 5)) // br xN
 #define AA64_B(imm26)       (0x14000000u | ((uint32_t)(imm26) & 0x03FFFFFFu))
 #define AA64_CBZ(reg, imm19)                                                   \
   (0xB4000000u | ((((uint32_t)(imm19)) & 0x7FFFFu) << 5) | ((reg) & 31u))
@@ -278,6 +279,29 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
       if (hi1)
         EMIT(AA64_MOVK(0, hi1, 48));
     } break;
+    case ONDA_OP_PUSH_INSTRUCTION_ADDR: {
+      uint32_t target_bpos = 0;
+      uint64_t val;
+      memcpy(&target_bpos, &bytecode[bcode_pos], sizeof(uint32_t));
+      bcode_pos += sizeof(uint32_t);
+      if (target_bpos >= bytecode_size || bcode_to_mcode[target_bpos] < 0) {
+        printf("Error: unresolved instruction address at bytecode %u\n",
+               target_bpos);
+        goto jit_fail;
+      }
+      val = (uint64_t)((uint32_t)bcode_to_mcode[target_bpos] * 4u);
+      lo0 = (uint16_t)((val >> 0) & 0xFFFFu);
+      hi0 = (uint16_t)((val >> 16) & 0xFFFFu);
+      lo1 = (uint16_t)((val >> 32) & 0xFFFFu);
+      hi1 = (uint16_t)((val >> 48) & 0xFFFFu);
+      EMIT2(AA64_PUSH_X0_STACK, AA64_MOVZ(0, lo0, 0));
+      if (hi0)
+        EMIT(AA64_MOVK(0, hi0, 16));
+      if (lo1)
+        EMIT(AA64_MOVK(0, lo1, 32));
+      if (hi1)
+        EMIT(AA64_MOVK(0, hi1, 48));
+    } break;
     case ONDA_OP_PUSH_LOCAL: {
       const uint8_t local_id = bytecode[bcode_pos++];
       EMIT(AA64_PUSH_X0_STACK);
@@ -521,6 +545,16 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
       }
       bcode_pos += 2;
     } break;
+    case ONDA_OP_JUMP_TO_TOS: {
+      EMIT(AA64_MOV(1, 0));      // x1 = target machine-code offset
+      EMIT(AA64_POP_STACK(0));   // pop new TOS to x0
+      {
+        const int32_t disp_to_start = -(int32_t)(mcode_size * 4);
+        EMIT(AA64_ADR(2, disp_to_start)); // x2 = function start
+      }
+      EMIT(AA64_ADD(1, 1, 2));   // x1 = absolute target
+      EMIT(AA64_BR(1));          // jump
+    } break;
     case ONDA_OP_CALL_NATIVE: {
       for (uint8_t i = 0; i < ONDA_LOCAL_REG_COUNT; i++) {
         EMIT(AA64_STRU(AA64_LOCAL_REG(i), FS_REG, (2 + i) * 8));
@@ -625,7 +659,7 @@ size_t onda_jit_aarch64(const onda_runtime_t* rt,
       break;
     default:
       printf("Error: Unknown opcode %02X\n", opcode);
-      break;
+      goto jit_fail;
     }
   }
 

@@ -89,6 +89,8 @@ typedef struct {
   size_t aliases_count;
   // Current alias expansion depth used to avoid infinite alias recursion.
   size_t alias_expand_depth;
+  // Labels for direct jumps
+  onda_dict_t labels_map;
   // Current scope for resolving local variables. Initially NULL.
   onda_scope_t* current_scope;
   // Native functions callable from the bytecode.

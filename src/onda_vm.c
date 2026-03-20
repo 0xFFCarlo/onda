@@ -84,12 +84,14 @@ static const char* opcode_to_str[ONDA_OP_COUNT] = {
     [ONDA_OP_STORE_TO_ADDR_W] = "STORE_TO_ADDR_W",
     [ONDA_OP_PUSH_FROM_ADDR_DW] = "PUSH_FROM_ADDR_DW",
     [ONDA_OP_STORE_TO_ADDR_DW] = "STORE_TO_ADDR_DW",
+    [ONDA_OP_PUSH_INSTRUCTION_ADDR] = "PUSH_INSTRUCTION_ADDR",
     [ONDA_OP_SWAP] = "SWAP",
     [ONDA_OP_DUP] = "DUP",
     [ONDA_OP_OVER] = "OVER",
     [ONDA_OP_ROT] = "ROT",
     [ONDA_OP_DROP] = "DROP",
     [ONDA_OP_JUMP] = "JUMP",
+    [ONDA_OP_JUMP_TO_TOS] = "JUMP_TO_TOS",
     [ONDA_OP_JUMP_IF_FALSE] = "JUMP_IF_FALSE",
     [ONDA_OP_CALL] = "CALL",
     [ONDA_OP_CALL_NATIVE] = "CALL_NATIVE",
@@ -102,6 +104,7 @@ static const uint8_t opcode_args_byte[ONDA_OP_COUNT] = {
     [ONDA_OP_PUSH_CONST_POOL_PTR_U32] = sizeof(uint32_t),
     [ONDA_OP_PUSH_LOCAL] = sizeof(uint8_t),
     [ONDA_OP_STORE_LOCAL] = sizeof(uint8_t),
+    [ONDA_OP_PUSH_INSTRUCTION_ADDR] = sizeof(uint32_t),
     [ONDA_OP_ADD_CONST_I8] = sizeof(int8_t),
     [ONDA_OP_MUL_CONST_I8] = sizeof(int8_t),
     [ONDA_OP_INC_LOCAL] = sizeof(uint8_t),
@@ -202,6 +205,7 @@ int onda_vm_run(onda_vm_t* vm) {
       [ONDA_OP_PUSH_CONST_POOL_PTR_U32] = &&op_push_const_pool_ptr_u32,
       [ONDA_OP_PUSH_LOCAL] = &&op_push_from_local,
       [ONDA_OP_STORE_LOCAL] = &&op_store_to_local,
+      [ONDA_OP_PUSH_INSTRUCTION_ADDR] = &&op_push_instruction_addr,
       [ONDA_OP_INC_LOCAL] = &&op_inc_local,
       [ONDA_OP_DEC_LOCAL] = &&op_dec_local,
       [ONDA_OP_ADD_LOCAL] = &&op_add_local,
@@ -220,6 +224,7 @@ int onda_vm_run(onda_vm_t* vm) {
       [ONDA_OP_ROT] = &&op_rot,
       [ONDA_OP_DROP] = &&op_drop,
       [ONDA_OP_JUMP] = &&op_jmp,
+      [ONDA_OP_JUMP_TO_TOS] = &&op_jmp_to_tos,
       [ONDA_OP_JUMP_IF_FALSE] = &&op_jmp_if_false,
       [ONDA_OP_CALL] = &&op_call,
       [ONDA_OP_CALL_NATIVE] = &&op_call_native,
@@ -369,6 +374,14 @@ op_store_to_local : {
   sp++;
   DISPATCH();
 }
+op_push_instruction_addr : {
+  uint32_t offset;
+  memcpy(&offset, &vm->runtime.code[pc], sizeof(uint32_t));
+  pc += sizeof(uint32_t);
+  sp--;
+  *sp = (int64_t)offset;
+  DISPATCH();
+}
 op_inc_local : {
   frame_bp[vm->runtime.code[pc++]]++;
   DISPATCH();
@@ -438,6 +451,10 @@ op_drop:
 op_jmp:
   memcpy(&jmp_offset, &vm->runtime.code[pc], sizeof(int16_t));
   pc += jmp_offset;
+  DISPATCH();
+op_jmp_to_tos:
+  pc = (size_t)*sp;
+  sp++;
   DISPATCH();
 op_jmp_if_false:
   memcpy(&jmp_offset, &vm->runtime.code[pc], sizeof(int16_t));
