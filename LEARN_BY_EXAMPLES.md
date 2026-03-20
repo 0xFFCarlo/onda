@@ -297,7 +297,42 @@ Run:
 ./bin/ondac run examples/file_io_basics.onda
 ```
 
-## 9. Advanced Demos
+## 9. Computed Control Flow: `label` and `jump`
+
+Onda supports computed jumps through label addresses. In the current compiler,
+labels are resolved backward-only, so jump targets must be declared earlier in
+the same word.
+
+```onda
+: count_down_with_jump ( n | i )
+  n -> i
+
+  label loop
+  i .
+  "\n" .s
+  i -- -> i
+  if i 0 > then loop jump end
+
+  i
+;
+
+: main
+  5 count_down_with_jump drop
+;
+```
+
+How this works:
+1. `label loop` records the current instruction address.
+2. Later, `loop` pushes that address to the stack.
+3. `jump` pops the address and branches to it.
+4. The loop continues while `i > 0`.
+
+Practical notes:
+- Labels are local to the word where they are declared.
+- In current Onda, labels must be referenced after declaration.
+- Use `if`/`while` for everyday flow, and `jump` for low-level control.
+
+## 10. Advanced Demos
 
 After the core path, use these to study recursion depth, larger control flow,
 and performance behavior.
@@ -313,7 +348,7 @@ Run examples:
 ./bin/ondac run examples/sudoku_solver.onda
 ```
 
-## 10. Build, Bytecode, and Execution Modes
+## 11. Build, Bytecode, and Execution Modes
 
 You can run source directly for fast iteration, then switch to bytecode when
 you want a build artifact.

@@ -1,0 +1,45 @@
+# Memory indexing
+:: []! 8 * + ! ;
+:: []b! + ! ;
+
+# Opcodes
+:: op_push_u8 0 ;
+:: op_add 1 ;
+:: op_sub 2 ;
+:: op_mul 3 ;
+:: op_ret 4 ;
+
+# Utils
+:: pc++ pc ++ -> pc ;
+:: dispatch  disp_table code pc + b@ 8 * + @ pc++ jump ;
+
+: dispatch_op ( disp_table code | pc )
+  0 -> pc
+  dispatch # Goto the first instruction 
+  label lbl_op_push_u8  code pc + b@ pc++ dispatch
+  label lbl_op_add      + dispatch
+  label lbl_op_sub      - dispatch
+  label lbl_op_mul      * dispatch
+  label lbl_op_ret      ret
+;
+
+: main ( | ds_table code )
+  # Make dispatch table
+  5 8 * malloc -> ds_table
+  lbl_op_push_u8 ds_table op_push_u8 []!
+  lbl_op_add ds_table op_add []!
+  lbl_op_sub ds_table op_sub []!
+  lbl_op_mul ds_table op_mul []!
+  lbl_op_ret ds_table op_ret []!
+
+  # Craft code
+  128 malloc -> code
+  op_push_u8 code 0 []b!
+  10 code 1 []b!
+  op_push_u8 code 2 []b!
+  5 code 3 []b!
+  op_add code 4 []b!
+  op_ret code 5 []b!
+  ds_table code dispatch_op
+  "Result: " .s . "\n" .s
+;

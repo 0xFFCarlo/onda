@@ -1,0 +1,52 @@
+# Minimal dispatch loop using label addresses + jump.
+
+:: []! 8 * + ! ;
+:: []b! + b! ;
+:: pc++ pc ++ -> pc ;
+
+:: op_push_u8 0 ;
+:: op_add 1 ;
+:: op_ret 2 ;
+
+:: dispatch
+  table code pc + b@ 8 * + @
+  pc++
+  jump
+;
+
+: run ( table code | pc )
+  0 -> pc
+  dispatch
+
+  label op_push_u8_handler
+  code pc + b@
+  pc++
+  dispatch
+
+  label op_add_handler
+  +
+  dispatch
+
+  label op_ret_handler
+  ret
+;
+
+: main ( | table code )
+  # Dispatch table: opcode -> handler label.
+  3 8 * malloc -> table
+  op_push_u8_handler table op_push_u8 []!
+  op_add_handler table op_add []!
+  op_ret_handler table op_ret []!
+
+  # Program: push 10, push 5, add, return.
+  16 malloc -> code
+  op_push_u8 code 0 []b!
+  10 code 1 []b!
+  op_push_u8 code 2 []b!
+  5 code 3 []b!
+  op_add code 4 []b!
+  op_ret code 5 []b!
+
+  table code run
+  "Result: " .s . "\n" .s
+;
