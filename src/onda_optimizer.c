@@ -22,7 +22,7 @@ static bool opt_push_const_i64(onda_code_obj_t* cobj, int64_t val) {
   if (val >= 0 && val <= INT32_MAX) {
     const uint32_t u32 = (uint32_t)val;
     if (!opt_push_opcode(cobj, ONDA_OP_PUSH_CONST_U32) ||
-        !onda_code_obj_reserve(cobj, sizeof(uint32_t))) {
+        onda_code_obj_reserve(cobj, sizeof(uint32_t)) != 0) {
       return false;
     }
     memcpy(&cobj->code[cobj->size], &u32, sizeof(uint32_t));
@@ -32,7 +32,7 @@ static bool opt_push_const_i64(onda_code_obj_t* cobj, int64_t val) {
 
   const uint64_t u64 = (uint64_t)val;
   if (!opt_push_opcode(cobj, ONDA_OP_PUSH_CONST_U64) ||
-      !onda_code_obj_reserve(cobj, sizeof(uint64_t))) {
+      onda_code_obj_reserve(cobj, sizeof(uint64_t)) != 0) {
     return false;
   }
   memcpy(&cobj->code[cobj->size], &u64, sizeof(uint64_t));
