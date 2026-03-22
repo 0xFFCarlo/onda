@@ -1,45 +1,99 @@
-# Memory indexing
-:: []! 8 * + ! ;
-:: []b! + ! ;
+:: dispatch disp_table code pc + b@ 8 * + @ pc ++ -> pc jump ;
+:: load8 code pc + b@ pc ++ -> pc ;
+:: load16 tmp code pc + 2 memcpy tmp pc 2 + -> pc ;
+:: load32 tmp code pc + 4 memcpy tmp pc 4 + -> pc ;
+:: load64 tmp code pc + 8 memcpy tmp pc 8 + -> pc ;
 
-# Opcodes
-:: op_push_u8 0 ;
-:: op_add 1 ;
-:: op_sub 2 ;
-:: op_mul 3 ;
-:: op_ret 4 ;
-
-# Utils
-:: pc++ pc ++ -> pc ;
-:: dispatch  disp_table code pc + b@ 8 * + @ pc++ jump ;
-
-: dispatch_op ( disp_table code | pc )
+: onda_vm_run ( disp_table code fs const_pool | pc tmp )
   0 -> pc
-  dispatch # Goto the first instruction 
-  label lbl_op_push_u8  code pc + b@ pc++ dispatch
-  label lbl_op_add      + dispatch
-  label lbl_op_sub      - dispatch
-  label lbl_op_mul      * dispatch
-  label lbl_op_ret      ret
+  8 malloc -> tmp
+  dispatch # Jump to first instruction
+  label lbl_op_ret               ret
+  label lbl_op_jump              pc load16 + -> pc dispatch
+  label lbl_op_jump_to_tos       -> pc dispatch
+  label lbl_op_jump_if_false     if 0 == then pc load16 + -> pc
+                                 else pc 2 + -> pc end dispatch
+  label lbl_op_call              dispatch # TODO:
+  label lbl_op_call_native       dispatch # TODO:
+  label lbl_op_add               + dispatch
+  label lbl_op_sub               - dispatch
+  label lbl_op_mul               * dispatch
+  label lbl_op_div               / dispatch
+  label lbl_op_mod               % dispatch
+  label lbl_op_add_const_i8      load8 + dispatch
+  label lbl_op_mult_const_i8     load8 * dispatch
+  label lbl_op_push_inc          ++ dispatch
+  label lbl_op_push_dec          -- dispatch
+  label lbl_op_push_shift_left   >> dispatch
+  label lbl_op_push_shift_right  << dispatch
+  label lbl_op_bitwise_and       & dispatch
+  label lbl_op_bitwise_or        | dispatch
+  label lbl_op_bitwise_xor       ^ dispatch
+  label lbl_op_bitwise_not       ~ dispatch
+  label lbl_op_and               and dispatch
+  label lbl_op_or                or dispatch
+  label lbl_op_not               not dispatch
+  label lbl_op_eq                == dispatch
+  label lbl_op_neq               != dispatch
+  label lbl_op_lt                < dispatch
+  label lbl_op_gt                > dispatch
+  label lbl_op_lte               <= dispatch
+  label lbl_op_gte               >= dispatch
+  label lbl_op_push_const_u8     load8 dispatch
+  label lbl_op_push_const_u32    load32 w@ dispatch
+  label lbl_op_push_const_u64    load64 @ dispatch
+  label lbl_op_push_const_ptr    load32 const_pool + dispatch
+  label lbl_op_push_local        fs load8 8 * + @ dispatch
+  label lbl_op_store_local       fs load8 8 * + ! dispatch
+  label lbl_op_push_instr_addr   load32 dispatch
+  label lbl_op_inc_local         fs load8 8 * + dup @ 1 + swap ! dispatch
+  label lbl_op_dec_local         fs load8 8 * + dup @ 1 - swap ! dispatch
+  label lbl_op_add_local         fs load8 8 * + @ + dispatch
+  label lbl_op_mul_local         fs load8 8 * + @ * dispatch
+  label lbl_op_push_from_addr_b  b@ dispatch
+  label lbl_op_store_to_addr_b   b! dispatch
+  label lbl_op_push_from_addr_hw h@ dispatch
+  label lbl_op_store_to_addr_hw  h! dispatch
+  label lbl_op_push_from_addr_w  w@ dispatch
+  label lbl_op_store_to_addr_w   w! dispatch
+  label lbl_op_push_from_addr_dw @ dispatch
+  label lbl_op_store_to_addr_dw  ! dispatch
+  label lbl_op_swap              swap dispatch
+  label lbl_op_dup               dup dispatch
+  label lbl_op_over              over dispatch
+  label lbl_op_rot               rot dispatch
+  label lbl_op_drop              drop dispatch
 ;
 
-: main ( | ds_table code )
-  # Make dispatch table
-  5 8 * malloc -> ds_table
-  lbl_op_push_u8 ds_table op_push_u8 []!
-  lbl_op_add ds_table op_add []!
-  lbl_op_sub ds_table op_sub []!
-  lbl_op_mul ds_table op_mul []!
-  lbl_op_ret ds_table op_ret []!
+:: op_count 54 ;
+:: op! ds_table swap 8 * + ! ;
+:: emitb code i + b! i ++ -> i ;
 
-  # Craft code
-  128 malloc -> code
-  op_push_u8 code 0 []b!
-  10 code 1 []b!
-  op_push_u8 code 2 []b!
-  5 code 3 []b!
-  op_add code 4 []b!
-  op_ret code 5 []b!
-  ds_table code dispatch_op
+: main ( | ds_table code fs const_pool i )
+
+  op_count 8 * malloc -> ds_table  # Make dispatch table
+  lbl_op_drop lbl_op_rot lbl_op_over lbl_op_dup lbl_op_swap
+  lbl_op_store_to_addr_dw lbl_op_push_from_addr_dw lbl_op_store_to_addr_w
+  lbl_op_push_from_addr_w lbl_op_store_to_addr_hw lbl_op_push_from_addr_hw
+  lbl_op_store_to_addr_b lbl_op_push_from_addr_b lbl_op_mul_local lbl_op_add_local
+  lbl_op_dec_local lbl_op_inc_local lbl_op_push_instr_addr lbl_op_store_local
+  lbl_op_push_local lbl_op_push_const_ptr lbl_op_push_const_u64
+  lbl_op_push_const_u32 lbl_op_push_const_u8 lbl_op_gte lbl_op_lte
+  lbl_op_gt lbl_op_lt lbl_op_neq lbl_op_eq lbl_op_not lbl_op_or lbl_op_and
+  lbl_op_bitwise_not lbl_op_bitwise_xor lbl_op_bitwise_or lbl_op_bitwise_and
+  lbl_op_push_shift_right lbl_op_push_shift_left lbl_op_push_dec lbl_op_push_inc
+  lbl_op_mult_const_i8 lbl_op_add_const_i8 lbl_op_mod lbl_op_div lbl_op_mul
+  lbl_op_sub lbl_op_add lbl_op_call_native lbl_op_call lbl_op_jump_if_false
+  lbl_op_jump_to_tos lbl_op_jump lbl_op_ret
+  0 -> i while i op_count < do i op! i ++ -> i end # Store labels in dispatch table
+
+  128 malloc -> code  # Craft bytecode
+  0 -> i
+  30 emitb 10 emitb 30 emitb 5 emitb # push 10, push 5
+  6 emitb 0 emitb # add, ret
+
+  512 malloc -> const_pool  # Constant pool (empty for this example)
+  2048 malloc -> fs  # Frame stack (empty for this example)
+  ds_table code fs const_pool onda_vm_run  # Run the code
   "Result: " .s . "\n" .s
 ;
