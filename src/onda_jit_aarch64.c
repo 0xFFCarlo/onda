@@ -1,4 +1,4 @@
-#if defined(__aarch64__)
+#if defined(__aarch64__) && ONDA_ENABLE_JIT_AARCH64
 
 #include "onda_jit_aarch64.h"
 
@@ -117,9 +117,9 @@ typedef struct onda_unresolved_jump_t {
   uint8_t jump_type;
 } onda_unresolved_jump_t;
 
-size_t onda_jit_aarch64(const onda_runtime_t* rt,
-                        uint8_t** out_machine_code,
-                        size_t* out_machine_code_size) {
+int onda_jit_aarch64(const onda_runtime_t* rt,
+                     uint8_t** out_machine_code,
+                     size_t* out_machine_code_size) {
   const uint8_t* bytecode = rt->code;
   const size_t bytecode_entry_pc = rt->entry_pc;
   const size_t bytecode_size = rt->code_size;
@@ -687,4 +687,4 @@ jit_fail: {
 }
 }
 
-#endif // defined(__aarch64__)
+#endif // defined(__aarch64__) && ONDA_ENABLE_JIT_AARCH64

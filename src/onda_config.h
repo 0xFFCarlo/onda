@@ -1,7 +1,15 @@
 #ifndef ONDA_CONFIG_H
 #define ONDA_CONFIG_H
 
-#if defined(__aarch64__) || defined(__x86_64__)
+#ifndef ONDA_ENABLE_JIT_X86_64
+#define ONDA_ENABLE_JIT_X86_64 0
+#endif
+
+#ifndef ONDA_ENABLE_JIT_AARCH64
+#define ONDA_ENABLE_JIT_AARCH64 0
+#endif
+
+#if ONDA_ENABLE_JIT_X86_64 || ONDA_ENABLE_JIT_AARCH64
 #define ONDA_CAN_JIT
 #endif
 

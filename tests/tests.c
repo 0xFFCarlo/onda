@@ -4,6 +4,7 @@
 #include "../src/onda_vm.h"
 
 #include <inttypes.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -16,313 +17,339 @@ typedef struct test_case_t {
   bool debug_mode;
 } test_case_t;
 
+#define GET_TEST_CASE_MACRO(_1, _2, _3, _4, _5, NAME, ...) NAME
+#define TEST(...)                                                             \
+  GET_TEST_CASE_MACRO(__VA_ARGS__, TEST5, TEST4, TEST3)(__VA_ARGS__)
+#define TEST3(program, stack_size, expected_result_a)                         \
+  {                                                                           \
+      (program), (stack_size), (expected_result_a), 0, false,                 \
+  }
+#define TEST4(program, stack_size, expected_result_a, expected_result_b)       \
+  {                                                                           \
+      (program),                                                              \
+      (stack_size),                                                           \
+      (expected_result_a),                                                    \
+      (expected_result_b),                                                    \
+      false,                                                                  \
+  }
+#define TEST5(program,                                                         \
+              stack_size,                                                      \
+              expected_result_a,                                               \
+              expected_result_b,                                               \
+              debug_mode)                                                      \
+  {                                                                            \
+      (program),                                                               \
+      (stack_size),                                                            \
+      (expected_result_a),                                                     \
+      (expected_result_b),                                                     \
+      (debug_mode),                                                            \
+  }
+
 static const test_case_t tests[] = {
     //===================
     // Basic operations
     //===================
     // --- RET (empty stack)
-    {"ret", 0, 0x0},
+    TEST("ret", 0, 0x0),
 
     // --- PUSH CONSTANTS
-    {"10 ret", 1, 10},
+    TEST("10 ret", 1, 10),
 
     // --- PUSH MULTIPLE CONSTANTS
-    {"10 20 ret", 2, 20, 10},
+    TEST("10 20 ret", 2, 20, 10),
 
     // --- ADD (+): minimal extra coverage (order shouldn't matter)
-    {"2 4 + ret", 1, 6},
+    TEST("2 4 + ret", 1, 6),
 
     // --- SUB (-): cover negative result explicitly
-    {"4 1 - ret", 1, 3},
+    TEST("4 1 - ret", 1, 3),
 
     // --- SUB (-): negative result
-    {"1 4 - ret", 1, -3},
+    TEST("1 4 - ret", 1, -3),
 
     // --- INC (++)
-    {"41 ++ ret", 1, 42},
+    TEST("41 ++ ret", 1, 42),
 
     // --- DEC (--)
-    {"43 -- ret", 1, 42},
+    TEST("43 -- ret", 1, 42),
 
     // --- MULTIPLY (*)
-    {"6 7 * ret", 1, 42},
+    TEST("6 7 * ret", 1, 42),
 
     // --- DIVIDE (/): integer division assumed
-    {"7 2 / ret", 1, 3},
+    TEST("7 2 / ret", 1, 3),
 
     // --- MODULO (%)
-    {"7 2 % ret", 1, 1},
+    TEST("7 2 % ret", 1, 1),
     // --- SHIFT LEFT (<<)
-    {"3 2 << ret", 1, 12},
+    TEST("3 2 << ret", 1, 12),
     // --- SHIFT RIGHT (>>)
-    {"8 2 >> ret", 1, 2},
+    TEST("8 2 >> ret", 1, 2),
     // arithmetic right shift on negative numbers
-    {"0 8 - 2 >> ret", 1, -2},
+    TEST("0 8 - 2 >> ret", 1, -2),
     // --- BITWISE AND (&)
-    {"6 3 & ret", 1, 2},
+    TEST("6 3 & ret", 1, 2),
     // --- BITWISE OR (|)
-    {"6 3 | ret", 1, 7},
+    TEST("6 3 | ret", 1, 7),
     // --- BITWISE XOR (^)
-    {"6 3 ^ ret", 1, 5},
+    TEST("6 3 ^ ret", 1, 5),
     // --- BITWISE NOT (~)
-    {"0 ~ ret", 1, -1},
+    TEST("0 ~ ret", 1, -1),
 
     //===================
     // Logic operators
     //===================
     // --- NOT (!): assume logical-not (0 -> 1, nonzero -> 0)
-    {"0 not ret", 1, 1},
-    {"5 not ret", 1, 0},
+    TEST("0 not ret", 1, 1),
+    TEST("5 not ret", 1, 0),
 
     // --- EQUALITY (==)
-    {"42 42 == ret", 1, 1},
-    {"42 7 == ret", 1, 0},
+    TEST("42 42 == ret", 1, 1),
+    TEST("42 7 == ret", 1, 0),
 
     // --- NOT EQUAL (!=)
-    {"42 7 != ret", 1, 1},
-    {"42 42 != ret", 1, 0},
+    TEST("42 7 != ret", 1, 1),
+    TEST("42 42 != ret", 1, 0),
 
     // --- LESS (<)
-    {"1 2 < ret", 1, 1},
-    {"2 1 < ret", 1, 0},
+    TEST("1 2 < ret", 1, 1),
+    TEST("2 1 < ret", 1, 0),
 
     // --- LESS EQUAL (<=)
-    {"2 2 <= ret", 1, 1},
-    {"3 2 <= ret", 1, 0},
+    TEST("2 2 <= ret", 1, 1),
+    TEST("3 2 <= ret", 1, 0),
 
     // --- GREATER (>)
-    {"2 1 > ret", 1, 1},
-    {"1 2 > ret", 1, 0},
+    TEST("2 1 > ret", 1, 1),
+    TEST("1 2 > ret", 1, 0),
 
     // --- GREATER EQUAL (>=)
-    {"2 2 >= ret", 1, 1},
-    {"1 2 >= ret", 1, 0},
+    TEST("2 2 >= ret", 1, 1),
+    TEST("1 2 >= ret", 1, 0),
 
     // --- LOGICAL AND (and): assume nonzero=true, result 1/0
-    {"1 1 and ret", 1, 1},
-    {"1 0 and ret", 1, 0},
+    TEST("1 1 and ret", 1, 1),
+    TEST("1 0 and ret", 1, 0),
     // non-boolean operands should still normalize to 1/0
-    {"2 4 and ret", 1, 1},
-    {"0 7 and ret", 1, 0},
+    TEST("2 4 and ret", 1, 1),
+    TEST("0 7 and ret", 1, 0),
 
     // --- LOGICAL OR (or): assume nonzero=true, result 1/0
-    {"0 0 or ret", 1, 0},
-    {"1 0 or ret", 1, 1},
+    TEST("0 0 or ret", 1, 0),
+    TEST("1 0 or ret", 1, 1),
     // non-boolean operands should still normalize to 1/0
-    {"2 4 or ret", 1, 1},
-    {"0 9 or ret", 1, 1},
+    TEST("2 4 or ret", 1, 1),
+    TEST("0 9 or ret", 1, 1),
 
     //===================
     // Stack operations
     //===================
     // drop: (a -- )
-    {"10 drop ret", 0, 0},
+    TEST("10 drop ret", 0, 0),
 
     // dup: (a -- a a)
-    {"7 dup ret", 2, 7, 7},
+    TEST("7 dup ret", 2, 7, 7),
 
     // swap: (a b -- b a)
-    {"10 20 swap ret", 2, 10, 20},
+    TEST("10 20 swap ret", 2, 10, 20),
 
     // over: (a b -- a b a)  (copies 2nd item to top)
-    {"10 20 over ret", 3, 10, 20},
+    TEST("10 20 over ret", 3, 10, 20),
 
     // rot: (a b c -- b c a)
-    {"1 2 3 rot ret", 3, 2, 1},
+    TEST("1 2 3 rot ret", 3, 2, 1),
 
     //===================
     // If condition
     //===================
-    {"if 1 then 2 end ret", 1, 2},
-    {"if 0 then 2 end ret", 0, 0},
-    {"if 2 3 > then 4 4 + else 5 5 + end ret", 1, 10},
-    {"if 2 3 < then 4 4 + else 5 5 + end ret", 1, 8},
-    {"if 1 then 3 else 4 end ret", 1, 3},
-    {"if 0 then 3 else 4 end ret", 1, 4},
+    TEST("if 1 then 2 end ret", 1, 2),
+    TEST("if 0 then 2 end ret", 0, 0),
+    TEST("if 2 3 > then 4 4 + else 5 5 + end ret", 1, 10),
+    TEST("if 2 3 < then 4 4 + else 5 5 + end ret", 1, 8),
+    TEST("if 1 then 3 else 4 end ret", 1, 3),
+    TEST("if 0 then 3 else 4 end ret", 1, 4),
 
     //===================
     // While loop
     //===================
-    {"10 while dup 2 > do -- end ret", 1, 2},
-    {"5 while dup 0 > do 1 - end drop ret", 0, 0},
-    {"0 while dup 10 < do ++ if dup 9 != then continue end 10 * end ret",
-     1,
-     90},
+    TEST("10 while dup 2 > do -- end ret", 1, 2),
+    TEST("5 while dup 0 > do 1 - end drop ret", 0, 0),
+    TEST("0 while dup 10 < do ++ if dup 9 != then continue end 10 * end ret",
+         1,
+         90),
     // Computed jump via label address (backward jump loop).
-    {": main ( | i ) 0 -> i label loop i 1 + -> i if i 5 < then loop jump end i ;",
-     1,
-     5},
+    TEST(": main ( | i ) 0 -> i label loop i 1 + -> i if i 5 < then loop jump end i ;",
+         1,
+         5),
     // Single loop: sum 1..10 but skip 5 using continue
-    {"0 10 while dup 0 > do "
-     "if dup 5 == then -- continue end "
-     "swap over + swap "
-     "-- "
-     "end drop ret",
-     1,
-     50},
+    TEST("0 10 while dup 0 > do "
+         "if dup 5 == then -- continue end "
+         "swap over + swap "
+         "-- "
+         "end drop ret",
+         1,
+         50),
 
     //===================
     // Words
     //===================
-    {":square  dup * ; "
-     ":main    5 square ; ",
-     1,
-     25},
+    TEST(":square  dup * ; "
+         ":main    5 square ; ",
+         1,
+         25),
     // Words recursion
-    {":factorial  if dup 1 <= then drop 1 else dup 1 - factorial * end ; "
-     ":main       5 factorial ; ",
-     1,
-     120},
+    TEST(":factorial  if dup 1 <= then drop 1 else dup 1 - factorial * end ; "
+         ":main       5 factorial ; ",
+         1,
+         120),
     // Many words
-    {":fun_c  3 ; "
-     ":fun_b  2 fun_c + ; "
-     ":fun_a  1 fun_b + ; "
-     ":main   fun_a ; ",
-     1,
-     6},
+    TEST(":fun_c  3 ; "
+         ":fun_b  2 fun_c + ; "
+         ":fun_a  1 fun_b + ; "
+         ":main   fun_a ; ",
+         1,
+         6),
     // Words with arguments
-    {": dist ( a b ) a a * b b * + ;"
-     ": main 3 4 dist ;",
-     1,
-     25},
+    TEST(": dist ( a b ) a a * b b * + ;"
+         ": main 3 4 dist ;",
+         1,
+         25),
     // Words with local temporaries and local assignment/access
-    {": dist2 ( a b | aa bb ) "
-     "a a * -> aa "
-     "b b * -> bb "
-     "aa bb + ; "
-     ": main 3 4 dist2 ;",
-     1,
-     25},
+    TEST(": dist2 ( a b | aa bb ) "
+         "a a * -> aa "
+         "b b * -> bb "
+         "aa bb + ; "
+         ": main 3 4 dist2 ;",
+         1,
+         25),
     // Main word with local temporaries
-    {": main ( | tmp ) 10 -> tmp tmp ;", 1, 10},
+    TEST(": main ( | tmp ) 10 -> tmp tmp ;", 1, 10),
     // Word with local temporaries and nested loop with continue statements
-    {
-        ": countdown ( n k | start_k i ) "
-        "  0 -> i "
-        "  k -> start_k "
-        "  while n 0 > do "
-        "    if n 3 == then n -- -> n continue end "
-        "    start_k -> k "
-        "    while k 0 > do "
-        "      if k 2 == then k -- -> k continue end "
-        "      i n + -> i "
-        "      k -- -> k "
-        "    end"
-        "    n -- -> n "
-        "  end i ; "
-        ": main 5 5 countdown ;",
-        1,
-        48, // 5 * 4 + 4 * 4 + 2 * 4 + 1 * 4 = 48
-    },
+    TEST(": countdown ( n k | start_k i ) "
+         "  0 -> i "
+         "  k -> start_k "
+         "  while n 0 > do "
+         "    if n 3 == then n -- -> n continue end "
+         "    start_k -> k "
+         "    while k 0 > do "
+         "      if k 2 == then k -- -> k continue end "
+         "      i n + -> i "
+         "      k -- -> k "
+         "    end"
+         "    n -- -> n "
+         "  end i ; "
+         ": main 5 5 countdown ;",
+         1,
+         48), // 5 * 4 + 4 * 4 + 2 * 4 + 1 * 4 = 48
     //===================
     // Memory operations
     //===================
-    {"16 malloc dup 10 swap ! @ ret", 1, 10},
+    TEST("16 malloc dup 10 swap ! @ ret", 1, 10),
     // Setting and getting multiple 64bit double-word values in memory
-    {": test ( ptr ) 10 ptr ! 20 ptr 8 + ! ptr @ ptr 8 + @ ;"
-     ": main 16 malloc test ;",
-     2,
-     20,
-     10},
+    TEST(": test ( ptr ) 10 ptr ! 20 ptr 8 + ! ptr @ ptr 8 + @ ;"
+         ": main 16 malloc test ;",
+         2,
+         20,
+         10),
     // Setting and getting multiple 32bit words values in memory
-    {": test ( ptr ) 10 ptr w! 20 ptr 4 + w! ptr w@ ptr 4 + w@ ;"
-     ": main 16 malloc test ;",
-     2,
-     20,
-     10},
+    TEST(": test ( ptr ) 10 ptr w! 20 ptr 4 + w! ptr w@ ptr 4 + w@ ;"
+         ": main 16 malloc test ;",
+         2,
+         20,
+         10),
     // Setting and getting multiple 16bit half-words values in memory
-    {": test ( ptr ) 10 ptr h! 20 ptr 4 + h! ptr h@ ptr 4 + h@ ;"
-     ": main 16 malloc test ;",
-     2,
-     20,
-     10},
+    TEST(": test ( ptr ) 10 ptr h! 20 ptr 4 + h! ptr h@ ptr 4 + h@ ;"
+         ": main 16 malloc test ;",
+         2,
+         20,
+         10),
     // Setting and getting multiple bytes values in memory
-    {": test ( ptr ) 10 ptr b! 20 ptr 4 + b! ptr b@ ptr 4 + b@ ;"
-     ": main 16 malloc test ;",
-     2,
-     20,
-     10},
+    TEST(": test ( ptr ) 10 ptr b! 20 ptr 4 + b! ptr b@ ptr 4 + b@ ;"
+         ": main 16 malloc test ;",
+         2,
+         20,
+         10),
     // Setting and getting multiple bytes values in memory,
     // with values exceeding byte range to test truncation
-    {": test ( ptr ) 300 ptr b! 1024 ptr 4 + b! ptr b@ ptr 4 + b@ ;"
-     ": main 16 malloc test ;",
-     2,
-     0,
-     44},
+    TEST(": test ( ptr ) 300 ptr b! 1024 ptr 4 + b! ptr b@ ptr 4 + b@ ;"
+         ": main 16 malloc test ;",
+         2,
+         0,
+         44),
     //===================
     // C stdlib wrappers
     //===================
     // Stack-order regression checks (C-order arguments, last arg on TOS)
-    {"\"a\" \"b\" strcmp 0 < ret", 1, 1},
-    {"\"ab\" \"aa\" 2 memcmp 0 > ret", 1, 1},
-    {"\"ab\" \"aa\" 2 strncmp 0 > ret", 1, 1},
-    {":cpy1 ( | dst src ) 1 16 calloc -> dst 1 16 calloc -> src "
-     "65 src b! "
-     "dst src 1 memcpy "
-     "dst b@ ; "
-     ":main cpy1 ;",
-     1,
-     65},
+    TEST("\"a\" \"b\" strcmp 0 < ret", 1, 1),
+    TEST("\"ab\" \"aa\" 2 memcmp 0 > ret", 1, 1),
+    TEST("\"ab\" \"aa\" 2 strncmp 0 > ret", 1, 1),
+    TEST(":cpy1 ( | dst src ) 1 16 calloc -> dst 1 16 calloc -> src "
+         "65 src b! "
+         "dst src 1 memcpy "
+         "dst b@ ; "
+         ":main cpy1 ;",
+         1,
+         65),
 
     // String search helpers
-    {"\"hello\" dup 101 strchr swap 1 + == ret", 1, 1},
-    {"\"banana\" dup \"nan\" strstr swap 2 + == ret", 1, 1},
+    TEST("\"hello\" dup 101 strchr swap 1 + == ret", 1, 1),
+    TEST("\"banana\" dup \"nan\" strstr swap 2 + == ret", 1, 1),
 
     // Number parsing helpers
-    {"\"123\" atoi ret", 1, 123},
-    {"\"2a\" 16 strtol ret", 1, 42},
-    {"\"2a\" 16 strtoul ret", 1, 42},
+    TEST("\"123\" atoi ret", 1, 123),
+    TEST("\"2a\" 16 strtol ret", 1, 42),
+    TEST("\"2a\" 16 strtoul ret", 1, 42),
     // assert(cond,msg) consumes args and continues when cond is true
-    {"1 \"assert should not fail\" assert 7 ret", 1, 7},
+    TEST("1 \"assert should not fail\" assert 7 ret", 1, 7),
 
     //===================
     // Large constants (exercise PUSH_CONST_U32 / PUSH_CONST_U64 paths)
     //===================
     // U32: value > 255
-    {"65536 ret", 1, 65536},
+    TEST("65536 ret", 1, 65536),
     // U32: 0xFFFFFFFF (max 32-bit)
-    {"4294967295 ret", 1, 4294967295LL},
+    TEST("4294967295 ret", 1, 4294967295LL),
     // U64: value > 0xFFFFFFFF
-    {"4294967296 ret", 1, 4294967296LL},
+    TEST("4294967296 ret", 1, 4294967296LL),
     // Hex literals
-    {"0x2A ret", 1, 42},
-    {"-0x2A ret", 1, -42},
+    TEST("0x2A ret", 1, 42),
+    TEST("-0x2A ret", 1, -42),
     // Binary literals
-    {"0b101010 ret", 1, 42},
-    {"-0b101010 ret", 1, -42},
+    TEST("0b101010 ret", 1, 42),
+    TEST("-0b101010 ret", 1, -42),
 
     //===================
     // Signed comparisons with negative numbers
     //===================
     // -1 < 0 must be true (catches unsigned-vs-signed comparison bug)
-    {"0 1 - 0 < ret", 1, 1},
+    TEST("0 1 - 0 < ret", 1, 1),
     // -1 > 0 must be false
-    {"0 1 - 0 > ret", 1, 0},
+    TEST("0 1 - 0 > ret", 1, 0),
     // -1 <= -1 must be true
-    {"0 1 - 0 1 - <= ret", 1, 1},
+    TEST("0 1 - 0 1 - <= ret", 1, 1),
 
     //===================
     // Arithmetic edge cases
     //===================
     // MOD yielding zero
-    {"6 3 % ret", 1, 0},
+    TEST("6 3 % ret", 1, 0),
     // DIV of zero
-    {"0 5 / ret", 1, 0},
+    TEST("0 5 / ret", 1, 0),
     // Chained: (2 + 3) * 4 = 20
-    {"2 3 + 4 * ret", 1, 20},
+    TEST("2 3 + 4 * ret", 1, 20),
     // Immediate arithmetic fusion paths
-    {"5 3 * 1 + ret", 1, 16},
+    TEST("5 3 * 1 + ret", 1, 16),
     // Fused local inc/dec must preserve caller TOS
-    {": f ( | x ) 1 -> x x -- -> x x ; : main 7 f + ;", 1, 7},
+    TEST(": f ( | x ) 1 -> x x -- -> x x ; : main 7 f + ;", 1, 7),
     // Alias word inlines body at call site
-    {"::inc1 1 + ; :main 41 inc1 ;", 1, 42},
+    TEST("::inc1 1 + ; :main 41 inc1 ;", 1, 42),
     // Alias can be reused and expanded multiple times
-    {"::twice dup + ; :main 10 twice twice ;", 1, 40},
+    TEST("::twice dup + ; :main 10 twice twice ;", 1, 40),
     // Signed division/modulo (negative operands)
-    {"0 3 - 2 / ret", 1, -1},
-    {"0 3 - 2 % ret", 1, -1},
-    {"0 7 - 0 3 - / ret", 1, 2},
-    {"0 7 - 0 3 - % ret", 1, -1},
+    TEST("0 3 - 2 / ret", 1, -1),
+    TEST("0 3 - 2 % ret", 1, -1),
+    TEST("0 7 - 0 3 - / ret", 1, 2),
+    TEST("0 7 - 0 3 - % ret", 1, -1),
 
 };
 
@@ -337,14 +364,16 @@ static const char* compile_fail_tests[] = {
     ": main 1",
 };
 
-int main() {
+int main(void) {
   onda_lexer_t lexer = {0};
   onda_env_t env;
   onda_code_obj_t cobj = {0};
   size_t i;
   onda_vm_t* vm = onda_vm_new();
+#ifdef ONDA_CAN_JIT
   uint8_t* machine_code = NULL;
   size_t machine_code_size = 0;
+#endif
   onda_env_init(&env);
   onda_env_register_std(&env);
   vm->env = &env;
@@ -460,11 +489,11 @@ int main() {
     };
     onda_runtime_reset(&rt);
     onda_jit_compile(&rt, &machine_code, &machine_code_size);
-    uint64_t tos = onda_jit_run(machine_code, machine_code_size);
+    int64_t tos = (int64_t)onda_jit_run(machine_code, machine_code_size);
     if (tc->stack_size > 0) {
       if (tos != tc->expected_result_a) {
         fprintf(stderr,
-                "Test %zu JIT failed: expected TOS %" PRId64 ", got %" PRIu64
+                "Test %zu JIT failed: expected TOS %" PRId64 ", got %" PRId64
                 "\n",
                 i,
                 tc->expected_result_a,

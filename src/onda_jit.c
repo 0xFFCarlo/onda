@@ -1,8 +1,8 @@
 #include "onda_jit.h"
-#if defined(__aarch64__)
+#if ONDA_ENABLE_JIT_AARCH64
 #include "onda_jit_aarch64.h"
 #endif
-#if defined(__x86_64__)
+#if ONDA_ENABLE_JIT_X86_64
 #include "onda_jit_x86_64.h"
 #endif
 
@@ -75,9 +75,9 @@ uint64_t onda_jit_run(const uint8_t* machine_code, size_t machine_code_size) {
 int onda_jit_compile(const onda_runtime_t* rt,
                      uint8_t** out_machine_code,
                      size_t* out_machine_code_size) {
-#if defined(__aarch64__)
+#if ONDA_ENABLE_JIT_AARCH64
   return onda_jit_aarch64(rt, out_machine_code, out_machine_code_size);
-#elif defined(__x86_64__)
+#elif ONDA_ENABLE_JIT_X86_64
   return onda_jit_x86_64(rt, out_machine_code, out_machine_code_size);
 #else
   return -1; // JIT compilation not supported on this platform
