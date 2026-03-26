@@ -80,6 +80,9 @@ int onda_jit_compile(const onda_runtime_t* rt,
 #elif ONDA_ENABLE_JIT_X86_64
   return onda_jit_x86_64(rt, out_machine_code, out_machine_code_size);
 #else
+  (void)rt;
+  (void)out_machine_code;
+  (void)out_machine_code_size;
   return -1; // JIT compilation not supported on this platform
 #endif
 }

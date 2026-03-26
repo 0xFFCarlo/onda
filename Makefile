@@ -13,7 +13,7 @@ JIT_SRC :=
 ifneq ($(findstring x86_64,$(ARCH)),)
   JIT_SRC := src/onda_jit_x86_64.c
   ARCH_JIT_DEFS := -DONDA_ENABLE_JIT_X86_64=1 -DONDA_ENABLE_JIT_AARCH64=0
-else ifneq ($(filter aarch64 arm64,$(ARCH)),)
+else ifneq ($(findstring aarch64,$(ARCH))$(findstring arm64,$(ARCH)),)
   JIT_SRC := src/onda_jit_aarch64.c
   ARCH_JIT_DEFS := -DONDA_ENABLE_JIT_X86_64=0 -DONDA_ENABLE_JIT_AARCH64=1
 endif

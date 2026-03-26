@@ -397,29 +397,25 @@ static inline int code_pool_push_string(onda_code_obj_t* cobj,
   return 0;
 }
 
-// Create new scope and push onto code object's scope stack
+// Activate the single word scope used while compiling a word.
 static inline void onda_scope_push(onda_code_obj_t* code) {
-  onda_scope_t* new_scope = (onda_scope_t*)onda_malloc(sizeof(onda_scope_t));
-  onda_dict_init(&new_scope->locals);
-  new_scope->locals_count = 0;
-  new_scope->parent = code->current_scope;
-  code->current_scope = new_scope;
+  onda_dict_init(&code->word_scope.locals);
+  code->current_scope = &code->word_scope;
 }
 
-// Look up a variable name in the current scope stack.
+// Look up a variable name in the active scope.
 // If found, set local_id and return 0.
 static inline int onda_scope_get(onda_code_obj_t* code,
                                  const char* name,
                                  size_t name_len,
                                  uint8_t* local_id) {
   onda_scope_t* scope = code->current_scope;
+  if (scope == NULL)
+    return -1;
   uint64_t out_var_id;
-  while (scope) {
-    if (onda_dict_get(&scope->locals, name, name_len, &out_var_id) == 0) {
-      *local_id = (uint8_t)out_var_id;
-      return 0; // found
-    }
-    scope = scope->parent;
+  if (onda_dict_get(&scope->locals, name, name_len, &out_var_id) == 0) {
+    *local_id = (uint8_t)out_var_id;
+    return 0; // found
   }
   return -1; // not found
 }
@@ -431,6 +427,10 @@ static inline int onda_scope_set(onda_code_obj_t* code,
                                  uint8_t local_id) {
 
   onda_scope_t* scope = code->current_scope;
+  if (scope == NULL) {
+    printf("Error: No active scope\n");
+    return -1;
+  }
   uint64_t existing_id;
   if (onda_dict_get(&scope->locals, name, name_len, &existing_id) == 0) {
     printf("Error: Variable '%.*s' already defined in this scope\n",
@@ -442,17 +442,15 @@ static inline int onda_scope_set(onda_code_obj_t* code,
   return 0;
 }
 
-// Pop the current scope off the stack, freeing its resources. Update parent
-// scope's peak locals count if needed.
+// Deactivate the active word scope and release its resources.
 static inline void onda_scope_pop(onda_code_obj_t* code) {
   onda_scope_t* scope = code->current_scope;
   if (scope == NULL) {
     printf("Error: No scope to pop\n");
     return;
   }
-  code->current_scope = scope->parent;
   onda_dict_free(&scope->locals);
-  free(scope);
+  code->current_scope = NULL;
 }
 
 static int onda_compile_expr(onda_lexer_t* lexer,
@@ -861,6 +859,8 @@ static int validate_symbol_name(onda_lexer_t* lexer,
 static int onda_compile_word(onda_lexer_t* lexer,
                              onda_env_t* env,
                              onda_code_obj_t* cobj) {
+  int rc = -1;
+  bool has_scope = false;
   onda_word_t word = {0};
   onda_token_t tok;
   onda_token_next(lexer, &tok);
@@ -884,6 +884,7 @@ static int onda_compile_word(onda_lexer_t* lexer,
 
   // new scope for word locals
   onda_scope_push(cobj);
+  has_scope = true;
 
   // Parse arguments if any
   bool is_argument_section = true;
@@ -906,11 +907,11 @@ static int onda_compile_word(onda_lexer_t* lexer,
                   "Expected word argument name in word definition for '%.*s'",
                   (int)word.name_len,
                   word.name);
-        return -1;
+        goto cleanup;
       }
       onda_token_next(lexer, &tok); // consume argument name
       if (validate_name_availability(lexer, env, cobj, &tok, "Local") != 0)
-        return -1;
+        goto cleanup;
       if (onda_scope_set(cobj, tok.start, tok.len, word.locals_count++) != 0) {
         print_err(
             lexer,
@@ -920,7 +921,7 @@ static int onda_compile_word(onda_lexer_t* lexer,
             tok.start,
             (int)word.name_len,
             word.name);
-        return -1;
+        goto cleanup;
       }
       if (is_argument_section)
         word.args_count++;
@@ -943,23 +944,27 @@ static int onda_compile_word(onda_lexer_t* lexer,
                 "Word definition '%.*s' is missing terminating ';'\n",
                 (int)word.name_len,
                 word.name);
-      return -1;
+      rc = -1;
+      goto cleanup;
     }
     if (tok.type == TOKEN_COLON) {
       print_err(lexer,
                 "Nested word definition not allowed for word '%.*s'",
                 tok.len,
                 tok.start);
-      return -1;
+      rc = -1;
+      goto cleanup;
     }
-    int rc = onda_compile_expr(lexer, env, cobj);
+    rc = onda_compile_expr(lexer, env, cobj);
     if (rc != 0)
-      return rc;
+      goto cleanup;
   } while (true);
 
-  onda_scope_pop(cobj); // pop word scope
-
-  return 0;
+  rc = 0;
+cleanup:
+  if (has_scope)
+    onda_scope_pop(cobj); // pop word scope
+  return rc;
 }
 
 static int onda_compile_alias(onda_lexer_t* lexer,
@@ -1295,6 +1300,7 @@ int onda_code_obj_init(onda_code_obj_t* cobj, size_t initial_capacity) {
   cobj->aliases = NULL;
   cobj->aliases_count = 0;
   cobj->alias_expand_depth = 0;
+  cobj->current_scope = NULL;
   cobj->inner_loop_start_pc = -1;
   cobj->recent_opcode_count = 0;
   return 0;

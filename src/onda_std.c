@@ -6,69 +6,98 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int64_t* onda_print_u64(int64_t* sp) {
+static int64_t* onda_print_u64(int64_t* sp, size_t depth) {
+  (void)depth;
   uint64_t x = (uint64_t)(*sp);
   printf("%" PRIu64, x);
   return sp + 1;
 }
 
-static int64_t* onda_print_i64(int64_t* sp) {
+static int64_t* onda_print_i64(int64_t* sp, size_t depth) {
+  (void)depth;
   int64_t x = *sp;
   printf("%" PRId64, x);
   return sp + 1;
 }
 
-static int64_t* onda_print_hex(int64_t* sp) {
+static int64_t* onda_print_hex(int64_t* sp, size_t depth) {
+  (void)depth;
   uint64_t x = (uint64_t)(*sp);
   printf("0x%" PRIx64, x);
   return sp + 1;
 }
 
-static int64_t* onda_print_ptr(int64_t* sp) {
+static int64_t* onda_print_ptr(int64_t* sp, size_t depth) {
+  (void)depth;
   void* ptr = (void*)(uintptr_t)(*sp);
   printf("%p\n", ptr);
   return sp + 1;
 }
 
-static int64_t* onda_print_char(int64_t* sp) {
+static int64_t* onda_print_char(int64_t* sp, size_t depth) {
+  (void)depth;
   char c = (char)(*sp);
   printf("%c\n", c);
   return sp + 1;
 }
 
-static int64_t* onda_print_string(int64_t* sp) {
+static int64_t* onda_print_string(int64_t* sp, size_t depth) {
+  (void)depth;
   char* str = (char*)(uintptr_t)(*sp);
   printf("%s", str);
   return sp + 1;
 }
 
-static int64_t* onda_malloc(int64_t* sp) {
+static int64_t* onda_stack_depth(int64_t* sp,
+                                 size_t depth) {
+  sp--;
+  *sp = (int64_t)depth;
+  return sp;
+}
+
+static int64_t* onda_print_stack(int64_t* sp, size_t depth) {
+  printf("DS: {");
+  for (size_t i = 0; i < depth; i++) {
+    printf("%" PRId64, sp[i]);
+    if (i + 1 < depth)
+      printf(", ");
+  }
+  printf("}\n");
+  return sp;
+}
+
+static int64_t* onda_malloc(int64_t* sp, size_t depth) {
+  (void)depth;
   const size_t size = (size_t)(*sp);
   *sp = (int64_t)(uintptr_t)malloc(size);
   return sp;
 }
 
-static int64_t* onda_calloc(int64_t* sp) {
+static int64_t* onda_calloc(int64_t* sp, size_t depth) {
+  (void)depth;
   const size_t num = (size_t)(*(sp + 1));
   const size_t size = (size_t)(*sp);
   *(sp + 1) = (int64_t)(uintptr_t)calloc(num, size);
   return sp + 1;
 }
 
-static int64_t* onda_free(int64_t* sp) {
+static int64_t* onda_free(int64_t* sp, size_t depth) {
+  (void)depth;
   void* ptr = (void*)(uintptr_t)(*sp);
   free(ptr);
   return sp + 1;
 }
 
-static int64_t* onda_realloc(int64_t* sp) {
+static int64_t* onda_realloc(int64_t* sp, size_t depth) {
+  (void)depth;
   void* ptr = (void*)(uintptr_t)(*(sp + 1));
   size_t new_size = (size_t)(*sp);
   *(sp + 1) = (int64_t)(uintptr_t)realloc(ptr, new_size);
   return sp + 1;
 }
 
-static int64_t* onda_memcpy(int64_t* sp) {
+static int64_t* onda_memcpy(int64_t* sp, size_t depth) {
+  (void)depth;
   void* dest = (void*)(uintptr_t)(*(sp + 2));
   void* src = (void*)(uintptr_t)(*(sp + 1));
   size_t n = (size_t)(*sp);
@@ -76,7 +105,8 @@ static int64_t* onda_memcpy(int64_t* sp) {
   return sp + 3;
 }
 
-static int64_t* onda_memset(int64_t* sp) {
+static int64_t* onda_memset(int64_t* sp, size_t depth) {
+  (void)depth;
   void* dest = (void*)(uintptr_t)(*(sp + 2));
   int value = (int)(*(sp + 1));
   size_t n = (size_t)(*sp);
@@ -84,7 +114,8 @@ static int64_t* onda_memset(int64_t* sp) {
   return sp + 3;
 }
 
-static int64_t* onda_memcmp(int64_t* sp) {
+static int64_t* onda_memcmp(int64_t* sp, size_t depth) {
+  (void)depth;
   void* ptr1 = (void*)(uintptr_t)(*(sp + 2));
   void* ptr2 = (void*)(uintptr_t)(*(sp + 1));
   size_t n = (size_t)(*sp);
@@ -93,13 +124,15 @@ static int64_t* onda_memcmp(int64_t* sp) {
   return sp + 2;
 }
 
-static int64_t* onda_strlen(int64_t* sp) {
+static int64_t* onda_strlen(int64_t* sp, size_t depth) {
+  (void)depth;
   char* str = (char*)(uintptr_t)(*sp);
   *sp = (int64_t)strlen(str);
   return sp;
 }
 
-static int64_t* onda_strcmp(int64_t* sp) {
+static int64_t* onda_strcmp(int64_t* sp, size_t depth) {
+  (void)depth;
   char* str1 = (char*)(uintptr_t)(*(sp + 1));
   char* str2 = (char*)(uintptr_t)(*sp);
   int result = strcmp(str1, str2);
@@ -107,7 +140,8 @@ static int64_t* onda_strcmp(int64_t* sp) {
   return sp + 1;
 }
 
-static int64_t* onda_strncmp(int64_t* sp) {
+static int64_t* onda_strncmp(int64_t* sp, size_t depth) {
+  (void)depth;
   char* str1 = (char*)(uintptr_t)(*(sp + 2));
   char* str2 = (char*)(uintptr_t)(*(sp + 1));
   size_t n = (size_t)(*sp);
@@ -116,14 +150,16 @@ static int64_t* onda_strncmp(int64_t* sp) {
   return sp + 2;
 }
 
-static int64_t* onda_strcpy(int64_t* sp) {
+static int64_t* onda_strcpy(int64_t* sp, size_t depth) {
+  (void)depth;
   char* dest = (char*)(uintptr_t)(*(sp + 1));
   char* src = (char*)(uintptr_t)(*sp);
   strcpy(dest, src);
   return sp + 2;
 }
 
-static int64_t* onda_strncpy(int64_t* sp) {
+static int64_t* onda_strncpy(int64_t* sp, size_t depth) {
+  (void)depth;
   char* dest = (char*)(uintptr_t)(*(sp + 2));
   char* src = (char*)(uintptr_t)(*(sp + 1));
   size_t n = (size_t)(*sp);
@@ -131,14 +167,16 @@ static int64_t* onda_strncpy(int64_t* sp) {
   return sp + 3;
 }
 
-static int64_t* onda_strcat(int64_t* sp) {
+static int64_t* onda_strcat(int64_t* sp, size_t depth) {
+  (void)depth;
   char* dest = (char*)(uintptr_t)(*(sp + 1));
   char* src = (char*)(uintptr_t)(*sp);
   strcat(dest, src);
   return sp + 2;
 }
 
-static int64_t* onda_strncat(int64_t* sp) {
+static int64_t* onda_strncat(int64_t* sp, size_t depth) {
+  (void)depth;
   char* dest = (char*)(uintptr_t)(*(sp + 2));
   char* src = (char*)(uintptr_t)(*(sp + 1));
   size_t n = (size_t)(*sp);
@@ -146,21 +184,24 @@ static int64_t* onda_strncat(int64_t* sp) {
   return sp + 3;
 }
 
-static int64_t* onda_strchr(int64_t* sp) {
+static int64_t* onda_strchr(int64_t* sp, size_t depth) {
+  (void)depth;
   char* str = (char*)(uintptr_t)(*(sp + 1));
   int ch = (int)(*sp);
   *(sp + 1) = (int64_t)(uintptr_t)strchr(str, ch);
   return sp + 1;
 }
 
-static int64_t* onda_strstr(int64_t* sp) {
+static int64_t* onda_strstr(int64_t* sp, size_t depth) {
+  (void)depth;
   char* haystack = (char*)(uintptr_t)(*(sp + 1));
   char* needle = (char*)(uintptr_t)(*sp);
   *(sp + 1) = (int64_t)(uintptr_t)strstr(haystack, needle);
   return sp + 1;
 }
 
-static int64_t* onda_fopen(int64_t* sp) {
+static int64_t* onda_fopen(int64_t* sp, size_t depth) {
+  (void)depth;
   char* filename = (char*)(uintptr_t) * (sp + 1);
   char* mode = (char*)(uintptr_t)(*(sp));
   FILE* file = fopen(filename, mode);
@@ -168,20 +209,23 @@ static int64_t* onda_fopen(int64_t* sp) {
   return sp + 1;
 }
 
-static int64_t* onda_tmpfile(int64_t* sp) {
+static int64_t* onda_tmpfile(int64_t* sp, size_t depth) {
+  (void)depth;
   sp--;
   *sp = (int64_t)(uintptr_t)tmpfile();
   return sp;
 }
 
-static int64_t* onda_fclose(int64_t* sp) {
+static int64_t* onda_fclose(int64_t* sp, size_t depth) {
+  (void)depth;
   FILE* file = (FILE*)(uintptr_t)(*sp);
   int result = fclose(file);
   *sp = (int64_t)result;
   return sp;
 }
 
-static int64_t* onda_fread(int64_t* sp) {
+static int64_t* onda_fread(int64_t* sp, size_t depth) {
+  (void)depth;
   void* ptr = (void*)(uintptr_t) * (sp + 3);
   size_t size = (size_t)(*(sp + 2));
   size_t nmemb = (size_t)(*(sp + 1));
@@ -191,7 +235,8 @@ static int64_t* onda_fread(int64_t* sp) {
   return sp + 3;
 }
 
-static int64_t* onda_fwrite(int64_t* sp) {
+static int64_t* onda_fwrite(int64_t* sp, size_t depth) {
+  (void)depth;
   const void* ptr = (const void*)(uintptr_t) * (sp + 3);
   size_t size = (size_t)(*(sp + 2));
   size_t nmemb = (size_t)(*(sp + 1));
@@ -201,7 +246,8 @@ static int64_t* onda_fwrite(int64_t* sp) {
   return sp + 3;
 }
 
-static int64_t* onda_fseek(int64_t* sp) {
+static int64_t* onda_fseek(int64_t* sp, size_t depth) {
+  (void)depth;
   int whence = (int)(*sp);
   long offset = (long)(*(sp + 1));
   FILE* stream = (FILE*)(uintptr_t)(*(sp + 2));
@@ -209,62 +255,72 @@ static int64_t* onda_fseek(int64_t* sp) {
   return sp + 2;
 }
 
-static int64_t* onda_ftell(int64_t* sp) {
+static int64_t* onda_ftell(int64_t* sp, size_t depth) {
+  (void)depth;
   FILE* stream = (FILE*)(uintptr_t)(*sp);
   *sp = (int64_t)ftell(stream);
   return sp;
 }
 
-static int64_t* onda_fflush(int64_t* sp) {
+static int64_t* onda_fflush(int64_t* sp, size_t depth) {
+  (void)depth;
   FILE* stream = (FILE*)(uintptr_t)(*sp);
   *sp = (int64_t)fflush(stream);
   return sp;
 }
 
-static int64_t* onda_feof(int64_t* sp) {
+static int64_t* onda_feof(int64_t* sp, size_t depth) {
+  (void)depth;
   FILE* stream = (FILE*)(uintptr_t)(*sp);
   *sp = (int64_t)feof(stream);
   return sp;
 }
 
-static int64_t* onda_ferror(int64_t* sp) {
+static int64_t* onda_ferror(int64_t* sp, size_t depth) {
+  (void)depth;
   FILE* stream = (FILE*)(uintptr_t)(*sp);
   *sp = (int64_t)ferror(stream);
   return sp;
 }
 
-static int64_t* onda_rewind(int64_t* sp) {
+static int64_t* onda_rewind(int64_t* sp, size_t depth) {
+  (void)depth;
   FILE* stream = (FILE*)(uintptr_t)(*sp);
   rewind(stream);
   return sp + 1;
 }
 
-static int64_t* onda_clearerr(int64_t* sp) {
+static int64_t* onda_clearerr(int64_t* sp, size_t depth) {
+  (void)depth;
   FILE* stream = (FILE*)(uintptr_t)(*sp);
   clearerr(stream);
   return sp + 1;
 }
 
-static int64_t* onda_remove(int64_t* sp) {
+static int64_t* onda_remove(int64_t* sp, size_t depth) {
+  (void)depth;
   char* filename = (char*)(uintptr_t)(*sp);
   *sp = (int64_t)remove(filename);
   return sp;
 }
 
-static int64_t* onda_rename(int64_t* sp) {
+static int64_t* onda_rename(int64_t* sp, size_t depth) {
+  (void)depth;
   char* old_path = (char*)(uintptr_t)(*(sp + 1));
   char* new_path = (char*)(uintptr_t)(*sp);
   *(sp + 1) = (int64_t)rename(old_path, new_path);
   return sp + 1;
 }
 
-static int64_t* onda_atoi(int64_t* sp) {
+static int64_t* onda_atoi(int64_t* sp, size_t depth) {
+  (void)depth;
   char* str = (char*)(uintptr_t)(*sp);
   *sp = (int64_t)atoi(str);
   return sp;
 }
 
-static int64_t* onda_strtol(int64_t* sp) {
+static int64_t* onda_strtol(int64_t* sp, size_t depth) {
+  (void)depth;
   char* str = (char*)(uintptr_t)(*(sp + 1));
   int base = (int)(*sp);
   char* endptr = NULL;
@@ -272,7 +328,8 @@ static int64_t* onda_strtol(int64_t* sp) {
   return sp + 1;
 }
 
-static int64_t* onda_strtoul(int64_t* sp) {
+static int64_t* onda_strtoul(int64_t* sp, size_t depth) {
+  (void)depth;
   char* str = (char*)(uintptr_t)(*(sp + 1));
   int base = (int)(*sp);
   char* endptr = NULL;
@@ -280,13 +337,15 @@ static int64_t* onda_strtoul(int64_t* sp) {
   return sp + 1;
 }
 
-static int64_t* onda_exit(int64_t* sp) {
+static int64_t* onda_exit(int64_t* sp, size_t depth) {
+  (void)depth;
   fprintf(stderr, "Error: 'exit' is not supported in this runtime\n");
   (void)sp;
   return NULL;
 }
 
-static int64_t* onda_assert(int64_t* sp) {
+static int64_t* onda_assert(int64_t* sp, size_t depth) {
+  (void)depth;
   const char* msg = (const char*)(uintptr_t)(*sp);
   const int64_t cond = *(sp + 1);
   if (!cond) {
@@ -298,6 +357,8 @@ static int64_t* onda_assert(int64_t* sp) {
 
 static const onda_native_fn_t std_fns[] = {
     {".", 5, onda_print_u64, 1, 0},
+    {"depth", 5, onda_stack_depth, 0, 1},
+    {".stack", 6, onda_print_stack, 0, 0},
     {".s", 5, onda_print_string, 1, 0},
     {".c", 5, onda_print_char, 1, 0},
     {"print_u64", 5, onda_print_u64, 1, 0},

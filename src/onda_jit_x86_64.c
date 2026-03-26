@@ -29,6 +29,7 @@ int onda_jit_x86_64(const onda_runtime_t* rt,
   const size_t bytecode_entry_pc = rt->entry_pc;
   const size_t bytecode_size = rt->code_size;
   int64_t* data_sp = rt->data_sp;
+  const int64_t* data_stack_end = rt->data_stack + ONDA_DATA_STACK_SIZE;
   int64_t* frame_bp = rt->frame_bp;
   const onda_native_registry_t* reg = rt->native_registry;
   size_t bcode_pos = 0;
@@ -648,9 +649,16 @@ int onda_jit_x86_64(const onda_runtime_t* rt,
       uint32_t idx;
       READ_BCODE(uint32_t, idx);
       uint64_t fn_addr = (uint64_t)(uintptr_t)reg->items[idx].fn;
+      const uint64_t data_stack_end_addr = (uint64_t)(uintptr_t)data_stack_end;
       EMIT_SAVE_LOCAL_REGS;
       EMIT_PUSH_RAX_DS;        // push TOS to data stack
       EMITV(0x4C, 0x89, 0xE7); // mov rdi, r12  (arg: DS ptr)
+      // rsi = (data_stack_end - ds) / 8
+      EMITV(0x48, 0xBE); // mov rsi, imm64
+      EMIT_IMM64(data_stack_end_addr);
+      EMITV(0x4C, 0x29, 0xE6);       // sub rsi, r12
+      EMITV(0x48, 0xC1, 0xEE, 0x03); // shr rsi, 3
+      EMITV(0x48, 0xFF, 0xCE);       // dec rsi (drop hidden JIT slot)
       EMITV(0x49, 0xBA);       // mov r10, imm64
       EMIT_IMM64(fn_addr);
       EMITV(0x41, 0xFF, 0xD2); // call r10

@@ -124,6 +124,7 @@ int onda_jit_aarch64(const onda_runtime_t* rt,
   const size_t bytecode_entry_pc = rt->entry_pc;
   const size_t bytecode_size = rt->code_size;
   int64_t* data_sp = rt->data_sp;
+  const int64_t* data_stack_end = rt->data_stack + ONDA_DATA_STACK_SIZE;
   int64_t* frame_bp = rt->frame_bp;
   const onda_native_registry_t* reg = rt->native_registry;
   size_t bcode_pos = 0;
@@ -561,8 +562,19 @@ int onda_jit_aarch64(const onda_runtime_t* rt,
       }
       // push TOS to stack first to free x0
       EMIT(AA64_PUSH_X0_STACK);
-      // put ds in x0 as argument to native function
+      // put ds in x0 and depth in x1 for native function
       EMIT(AA64_MOV(0, DS_REG));
+      {
+        const uint64_t dse = (uint64_t)(uintptr_t)data_stack_end;
+        EMIT(AA64_MOVZ(1, (dse >> 0) & 0xFFFF, 0));
+        EMIT(AA64_MOVK(1, (dse >> 16) & 0xFFFF, 16));
+        EMIT(AA64_MOVK(1, (dse >> 32) & 0xFFFF, 32));
+        EMIT(AA64_MOVK(1, (dse >> 48) & 0xFFFF, 48));
+      }
+      EMIT(AA64_SUB(1, 1, DS_REG));
+      EMIT(AA64_MOVZ(2, 8, 0));
+      EMIT(AA64_UDIV(1, 1, 2));
+      EMIT(AA64_SUBI(1, 1, 1)); // drop hidden JIT slot
       // load native function address into x3 and call
       uint32_t idx;
       memcpy(&idx, &bytecode[bcode_pos], sizeof(uint32_t));

@@ -3,10 +3,12 @@
 
 #include "onda_dict.h"
 
+#include <stddef.h>
 #include <stdint.h>
 
 // Native function pointer to C code
-typedef int64_t* (*onda_native_fn_cb_t)(int64_t* data_stack);
+typedef int64_t* (*onda_native_fn_cb_t)(int64_t* data_stack,
+                                        size_t stack_depth);
 
 // Stores native function and its name
 typedef struct {

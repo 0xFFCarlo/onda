@@ -12,6 +12,8 @@
 // Locals ids in bytecode start from 2 as position 0 and 1 in stack frame
 // are reserved for return address and previous frame base pointer
 #define ONDA_LOCALS_BASE_OFF 2
+// History size for recently emitted opcodes used in peephole optimizations
+#define ONDA_OPCODE_HISTORY_SIZE 3
 
 typedef enum : uint8_t {
   TOKEN_COLON,      // :
@@ -63,8 +65,6 @@ typedef struct onda_alias_t {
 
 typedef struct onda_scope {
   onda_dict_t locals;
-  size_t locals_count;
-  struct onda_scope* parent;
 } onda_scope_t;
 
 typedef struct {
@@ -91,6 +91,8 @@ typedef struct {
   size_t alias_expand_depth;
   // Labels for direct jumps
   onda_dict_t labels_map;
+  // Single active local scope for the word currently being compiled.
+  onda_scope_t word_scope;
   // Current scope for resolving local variables. Initially NULL.
   onda_scope_t* current_scope;
   // Native functions callable from the bytecode.
@@ -99,8 +101,8 @@ typedef struct {
   // Its equal to -1 if not in a loop.
   int32_t inner_loop_start_pc;
   // Last emitted opcode start positions for peephole optimizations.
-  uint8_t recent_opcodes[3];
-  size_t recent_opcode_pos[3];
+  uint8_t recent_opcodes[ONDA_OPCODE_HISTORY_SIZE];
+  size_t recent_opcode_pos[ONDA_OPCODE_HISTORY_SIZE];
   uint8_t recent_opcode_count;
 } onda_code_obj_t;
 

@@ -158,6 +158,10 @@ static const test_case_t tests[] = {
 
     // rot: (a b c -- b c a)
     TEST("1 2 3 rot ret", 3, 2, 1),
+    // depth: ( -- n)
+    TEST("10 20 depth ret", 3, 2, 20),
+    // .stack: ( -- ) prints whole stack and keeps it unchanged
+    TEST("10 20 .stack ret", 2, 20, 10),
 
     //===================
     // If condition

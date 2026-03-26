@@ -491,7 +491,9 @@ op_call_native : {
     fprintf(stderr, "Error: native function registry not set in VM\n");
     return -1;
   }
-  int64_t* new_ds = native_registry->items[idx].fn(sp);
+  const size_t stack_depth =
+      (size_t)(vm->runtime.data_stack + ONDA_DATA_STACK_SIZE - sp);
+  int64_t* new_ds = native_registry->items[idx].fn(sp, stack_depth);
   if (new_ds == NULL) { // Check for errors
     fprintf(stderr, "Error: native function returned NULL\n");
     return -1;

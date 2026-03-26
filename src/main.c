@@ -5,7 +5,6 @@
 #include "onda_vm.h"
 
 #include <errno.h>
-#include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -39,10 +38,36 @@ typedef struct {
   size_t const_pool_size;
 } onda_program_t;
 
+typedef struct {
+  bool no_jit;
+  bool show_time;
+  bool print_bytecode;
+  const char* path;
+  const char* inline_source;
+} run_opts_t;
+
+typedef struct {
+  bool show_time;
+  bool print_bytecode;
+  const char* src_path;
+  const char* out_path;
+} build_opts_t;
+
 static double elapsed_ms(const struct timespec* start,
                          const struct timespec* end) {
   return (end->tv_sec - start->tv_sec) * 1000.0 +
          (end->tv_nsec - start->tv_nsec) / 1000000.0;
+}
+
+static onda_program_t program_from_cobj(const onda_code_obj_t* cobj) {
+  const onda_program_t prog = {
+      .code = cobj->code,
+      .code_size = cobj->size,
+      .entry_pc = cobj->entry_pc,
+      .const_pool = cobj->const_pool,
+      .const_pool_size = cobj->const_pool_size,
+  };
+  return prog;
 }
 
 static void usage(const char* prog) {
@@ -58,40 +83,32 @@ static void usage(const char* prog) {
           prog);
 }
 
-static int parse_exec_flags(int argc,
-                            char* argv[],
-                            int start,
-                            bool* no_jit,
-                            bool* show_time,
-                            bool* print_bytecode,
-                            const char** filepath,
-                            const char** inline_source) {
+static int parse_run_opts(int argc,
+                          char* argv[],
+                          int start,
+                          bool allow_inline,
+                          run_opts_t* out) {
   int file_count = 0;
   int inline_count = 0;
-  *no_jit = false;
-  *show_time = false;
-  *print_bytecode = false;
-  *filepath = NULL;
-  *inline_source = NULL;
+  *out = (run_opts_t){0};
 
   for (int i = start; i < argc; i++) {
     if (strcmp(argv[i], "--no-jit") == 0) {
-      *no_jit = true;
+      out->no_jit = true;
     } else if (strcmp(argv[i], "--time") == 0) {
-      *show_time = true;
+      out->show_time = true;
     } else if (strcmp(argv[i], "--print-bytecode") == 0) {
-      *print_bytecode = true;
+      out->print_bytecode = true;
     } else if (strcmp(argv[i], "-e") == 0) {
-      if (i + 1 >= argc || inline_count > 0) {
+      if (!allow_inline || i + 1 >= argc || inline_count > 0)
         return -1;
-      }
-      *inline_source = argv[++i];
+      out->inline_source = argv[++i];
       inline_count++;
     } else if (argv[i][0] == '-') {
       fprintf(stderr, "Unknown flag: %s\n", argv[i]);
       return -1;
     } else {
-      *filepath = argv[i];
+      out->path = argv[i];
       file_count++;
     }
   }
@@ -99,46 +116,36 @@ static int parse_exec_flags(int argc,
   return (file_count + inline_count) == 1 ? 0 : -1;
 }
 
-static int parse_build_args(int argc,
-                            char* argv[],
-                            bool* show_time,
-                            bool* print_bytecode,
-                            const char** src_path,
-                            const char** out_path) {
-  *show_time = false;
-  *print_bytecode = false;
-  *src_path = NULL;
-  *out_path = NULL;
+static int parse_build_opts(int argc, char* argv[], build_opts_t* out) {
+  *out = (build_opts_t){0};
 
   for (int i = 2; i < argc; i++) {
     if (strcmp(argv[i], "--time") == 0) {
-      *show_time = true;
-      continue;
-    }
-    if (strcmp(argv[i], "--print-bytecode") == 0) {
-      *print_bytecode = true;
-      continue;
-    }
-    if (argv[i][0] == '-') {
+      out->show_time = true;
+    } else if (strcmp(argv[i], "--print-bytecode") == 0) {
+      out->print_bytecode = true;
+    } else if (argv[i][0] == '-') {
       fprintf(stderr, "Unknown flag: %s\n", argv[i]);
       return -1;
-    }
-    if (!*src_path) {
-      *src_path = argv[i];
-    } else if (!*out_path) {
-      *out_path = argv[i];
+    } else if (!out->src_path) {
+      out->src_path = argv[i];
+    } else if (!out->out_path) {
+      out->out_path = argv[i];
     } else {
       return -1;
     }
   }
 
-  return (*src_path && *out_path) ? 0 : -1;
+  return (out->src_path && out->out_path) ? 0 : -1;
 }
 
-static int write_bytecode_file(const char* out_path, const onda_program_t* prog) {
+static int write_bytecode_file(const char* out_path,
+                               const onda_program_t* prog) {
   FILE* f = fopen(out_path, "wb");
   if (!f) {
-    fprintf(stderr, "Failed to open output file '%s': %s\n", out_path,
+    fprintf(stderr,
+            "Failed to open output file '%s': %s\n",
+            out_path,
             strerror(errno));
     return -1;
   }
@@ -172,7 +179,9 @@ static int read_bytecode_file(const char* in_path,
                               size_t* out_const_pool_size) {
   FILE* f = fopen(in_path, "rb");
   if (!f) {
-    fprintf(stderr, "Failed to open bytecode file '%s': %s\n", in_path,
+    fprintf(stderr,
+            "Failed to open bytecode file '%s': %s\n",
+            in_path,
             strerror(errno));
     return -1;
   }
@@ -230,12 +239,35 @@ static int read_bytecode_file(const char* in_path,
   }
 
   fclose(f);
-
   *out_code = code;
   *out_code_size = (size_t)hdr.code_size;
   *out_entry_pc = (size_t)hdr.entry_pc;
   *out_const_pool = const_pool;
   *out_const_pool_size = (size_t)hdr.const_pool_size;
+  return 0;
+}
+
+static int compile_program(const char* path,
+                           const char* inline_source,
+                           onda_lexer_t* lexer,
+                           onda_env_t* env,
+                           onda_code_obj_t* out_cobj) {
+  if (inline_source) {
+    *lexer = (onda_lexer_t){
+        .src = inline_source,
+        .filename = "<arg>",
+    };
+    if (onda_compile(lexer, env, out_cobj) != 0) {
+      fprintf(stderr, "Failed to parse source from -e argument\n");
+      return -1;
+    }
+    return 0;
+  }
+
+  if (onda_compile_file(path, lexer, env, out_cobj) != 0) {
+    fprintf(stderr, "Failed to parse source file: %s\n", path);
+    return -1;
+  }
   return 0;
 }
 
@@ -303,12 +335,139 @@ static int run_program(const onda_program_t* prog,
   }
   if (show_time)
     clock_gettime(CLOCK_MONOTONIC, &end);
-
   if (show_time && out_exec_ms)
     *out_exec_ms = elapsed_ms(&start, &end);
 
   onda_vm_free(vm);
   return ONDA_EXIT_OK;
+}
+
+static int print_and_run(const onda_program_t* prog,
+                         onda_env_t* env,
+                         bool print_bytecode,
+                         bool no_jit,
+                         bool show_time,
+                         double* out_exec_ms) {
+  if (print_bytecode)
+    onda_vm_print_bytecode(prog->code, prog->code_size);
+  return run_program(prog, env, no_jit, show_time, out_exec_ms);
+}
+
+static int cmd_build(int argc,
+                     char* argv[],
+                     onda_lexer_t* lexer,
+                     onda_env_t* env) {
+  build_opts_t opts;
+  onda_code_obj_t cobj = {0};
+  struct timespec compile_start, compile_end;
+
+  if (parse_build_opts(argc, argv, &opts) != 0)
+    return ONDA_EXIT_USAGE;
+
+  onda_code_obj_init(&cobj, ONDA_CODE_BUF_SIZE);
+  if (opts.show_time)
+    clock_gettime(CLOCK_MONOTONIC, &compile_start);
+  if (compile_program(opts.src_path, NULL, lexer, env, &cobj) != 0) {
+    onda_code_obj_free(&cobj);
+    return ONDA_EXIT_COMPILE;
+  }
+  if (opts.show_time)
+    clock_gettime(CLOCK_MONOTONIC, &compile_end);
+
+  const onda_program_t prog = program_from_cobj(&cobj);
+  if (opts.print_bytecode)
+    onda_vm_print_bytecode(prog.code, prog.code_size);
+
+  int rc = ONDA_EXIT_OK;
+  if (write_bytecode_file(opts.out_path, &prog) != 0) {
+    rc = ONDA_EXIT_LOAD;
+  } else {
+    printf("Wrote bytecode: %s\n", opts.out_path);
+    if (opts.show_time)
+      printf("Compilation time: %.3f ms\n",
+             elapsed_ms(&compile_start, &compile_end));
+  }
+
+  onda_code_obj_free(&cobj);
+  return rc;
+}
+
+static int cmd_run_or_exec(const char* cmd,
+                           int argc,
+                           char* argv[],
+                           onda_lexer_t* lexer,
+                           onda_env_t* env) {
+  run_opts_t opts;
+  double exec_ms = 0.0;
+  if (parse_run_opts(argc, argv, 2, strcmp(cmd, "run") == 0, &opts) != 0)
+    return ONDA_EXIT_USAGE;
+
+  if (strcmp(cmd, "exec") == 0) {
+    uint8_t* code = NULL;
+    uint8_t* const_pool = NULL;
+    size_t code_size = 0;
+    size_t entry_pc = 0;
+    size_t const_pool_size = 0;
+    int rc = ONDA_EXIT_OK;
+
+    if (read_bytecode_file(opts.path,
+                           &code,
+                           &code_size,
+                           &entry_pc,
+                           &const_pool,
+                           &const_pool_size) != 0) {
+      rc = ONDA_EXIT_LOAD;
+    } else {
+      const onda_program_t prog = {
+          .code = code,
+          .code_size = code_size,
+          .entry_pc = entry_pc,
+          .const_pool = const_pool,
+          .const_pool_size = const_pool_size,
+      };
+      rc = print_and_run(&prog,
+                         env,
+                         opts.print_bytecode,
+                         opts.no_jit,
+                         opts.show_time,
+                         &exec_ms);
+    }
+
+    free(code);
+    free(const_pool);
+    if (rc == ONDA_EXIT_OK && opts.show_time)
+      printf("Execution time: %.3f ms\n", exec_ms);
+    return rc;
+  }
+
+  onda_code_obj_t cobj = {0};
+  struct timespec compile_start, compile_end;
+  onda_code_obj_init(&cobj, ONDA_CODE_BUF_SIZE);
+
+  if (opts.show_time)
+    clock_gettime(CLOCK_MONOTONIC, &compile_start);
+  if (compile_program(opts.path, opts.inline_source, lexer, env, &cobj) != 0) {
+    onda_code_obj_free(&cobj);
+    return ONDA_EXIT_COMPILE;
+  }
+  if (opts.show_time)
+    clock_gettime(CLOCK_MONOTONIC, &compile_end);
+
+  const onda_program_t prog = program_from_cobj(&cobj);
+  const int rc = print_and_run(&prog,
+                               env,
+                               opts.print_bytecode,
+                               opts.no_jit,
+                               opts.show_time,
+                               &exec_ms);
+
+  onda_code_obj_free(&cobj);
+  if (rc == ONDA_EXIT_OK && opts.show_time) {
+    printf("Compilation time: %.3f ms\n",
+           elapsed_ms(&compile_start, &compile_end));
+    printf("Execution time: %.3f ms\n", exec_ms);
+  }
+  return rc;
 }
 
 int main(int argc, char* argv[]) {
@@ -329,198 +488,23 @@ int main(int argc, char* argv[]) {
   onda_env_init(&env);
   onda_env_register_std(&env);
 
+  int rc;
   if (strcmp(cmd, "build") == 0) {
-    bool show_time = false;
-    bool print_bytecode = false;
-    const char* src_path = NULL;
-    const char* out_path = NULL;
-    struct timespec compile_start, compile_end;
-
-    if (parse_build_args(
-            argc, argv, &show_time, &print_bytecode, &src_path, &out_path) !=
-        0) {
-      usage(argv[0]);
-      onda_env_free(&env);
-      return ONDA_EXIT_USAGE;
-    }
-
-    onda_code_obj_t cobj = {0};
-    onda_code_obj_init(&cobj, ONDA_CODE_BUF_SIZE);
-    if (show_time)
-      clock_gettime(CLOCK_MONOTONIC, &compile_start);
-    if (onda_compile_file(src_path, &lexer, &env, &cobj) != 0) {
-      fprintf(stderr, "Failed to parse source file: %s\n", src_path);
-      onda_code_obj_free(&cobj);
-      onda_env_free(&env);
-      return ONDA_EXIT_COMPILE;
-    }
-    if (show_time)
-      clock_gettime(CLOCK_MONOTONIC, &compile_end);
-
-    onda_program_t prog = {
-        .code = cobj.code,
-        .code_size = cobj.size,
-        .entry_pc = cobj.entry_pc,
-        .const_pool = cobj.const_pool,
-        .const_pool_size = cobj.const_pool_size,
-    };
-    if (print_bytecode)
-      onda_vm_print_bytecode(prog.code, prog.code_size);
-
-    int rc = ONDA_EXIT_OK;
-    if (write_bytecode_file(out_path, &prog) != 0) {
-      rc = ONDA_EXIT_LOAD;
-    } else {
-      printf("Wrote bytecode: %s\n", out_path);
-      if (show_time)
-        printf("Compilation time: %.3f ms\n",
-               elapsed_ms(&compile_start, &compile_end));
-    }
-
-    onda_code_obj_free(&cobj);
-    onda_env_free(&env);
-    return rc;
+    rc = cmd_build(argc, argv, &lexer, &env);
+  } else if (strcmp(cmd, "run") == 0 || strcmp(cmd, "exec") == 0) {
+    rc = cmd_run_or_exec(cmd, argc, argv, &lexer, &env);
+  } else if (argc == 2) {
+    char run_cmd[] = "run";
+    char* compat_argv[] = {argv[0], run_cmd, argv[1]};
+    rc = cmd_run_or_exec("run", 3, compat_argv, &lexer, &env);
+  } else {
+    fprintf(stderr, "Unknown command: %s\n", cmd);
+    rc = ONDA_EXIT_USAGE;
   }
 
-  if (strcmp(cmd, "run") == 0 || strcmp(cmd, "exec") == 0) {
-    bool no_jit = false;
-    bool show_time = false;
-    bool print_bytecode = false;
-    const char* filepath = NULL;
-    const char* inline_source = NULL;
-    struct timespec compile_start, compile_end;
-    double exec_ms = 0.0;
+  if (rc == ONDA_EXIT_USAGE)
+    usage(argv[0]);
 
-    if (parse_exec_flags(
-            argc,
-            argv,
-            2,
-            &no_jit,
-            &show_time,
-            &print_bytecode,
-            &filepath,
-            &inline_source) !=
-        0) {
-      usage(argv[0]);
-      onda_env_free(&env);
-      return ONDA_EXIT_USAGE;
-    }
-
-    int rc = ONDA_EXIT_OK;
-    if (strcmp(cmd, "exec") == 0) {
-      if (inline_source) {
-        fprintf(stderr, "Inline source (-e) is only supported with run\n");
-        usage(argv[0]);
-        onda_env_free(&env);
-        return ONDA_EXIT_USAGE;
-      }
-      uint8_t* code = NULL;
-      size_t code_size = 0;
-      size_t entry_pc = 0;
-      uint8_t* const_pool = NULL;
-      size_t const_pool_size = 0;
-
-      if (read_bytecode_file(filepath,
-                             &code,
-                             &code_size,
-                             &entry_pc,
-                             &const_pool,
-                             &const_pool_size) != 0) {
-        rc = ONDA_EXIT_LOAD;
-      } else {
-        onda_program_t prog = {
-            .code = code,
-            .code_size = code_size,
-            .entry_pc = entry_pc,
-            .const_pool = const_pool,
-            .const_pool_size = const_pool_size,
-        };
-        if (print_bytecode)
-          onda_vm_print_bytecode(prog.code, prog.code_size);
-        rc = run_program(&prog, &env, no_jit, show_time, &exec_ms);
-      }
-
-      free(code);
-      free(const_pool);
-      if (rc == ONDA_EXIT_OK && show_time)
-        printf("Execution time: %.3f ms\n", exec_ms);
-      onda_env_free(&env);
-      return rc;
-    }
-
-    onda_code_obj_t cobj = {0};
-    onda_code_obj_init(&cobj, ONDA_CODE_BUF_SIZE);
-    if (show_time)
-      clock_gettime(CLOCK_MONOTONIC, &compile_start);
-    if (inline_source) {
-      lexer.src = inline_source;
-      lexer.filename = "<arg>";
-      lexer.filepath = NULL;
-      lexer.import_depth = 0;
-      lexer.pos = 0;
-      lexer.line = 0;
-      lexer.column = 0;
-      if (onda_compile(&lexer, &env, &cobj) != 0) {
-        fprintf(stderr, "Failed to parse source from -e argument\n");
-        onda_code_obj_free(&cobj);
-        onda_env_free(&env);
-        return ONDA_EXIT_COMPILE;
-      }
-    } else if (onda_compile_file(filepath, &lexer, &env, &cobj) != 0) {
-      fprintf(stderr, "Failed to parse source file: %s\n", filepath);
-      onda_code_obj_free(&cobj);
-      onda_env_free(&env);
-      return ONDA_EXIT_COMPILE;
-    }
-    if (show_time)
-      clock_gettime(CLOCK_MONOTONIC, &compile_end);
-
-    onda_program_t prog = {
-        .code = cobj.code,
-        .code_size = cobj.size,
-        .entry_pc = cobj.entry_pc,
-        .const_pool = cobj.const_pool,
-        .const_pool_size = cobj.const_pool_size,
-    };
-    if (print_bytecode)
-      onda_vm_print_bytecode(prog.code, prog.code_size);
-    rc = run_program(&prog, &env, no_jit, show_time, &exec_ms);
-
-    onda_code_obj_free(&cobj);
-    if (rc == ONDA_EXIT_OK && show_time) {
-      printf("Compilation time: %.3f ms\n",
-             elapsed_ms(&compile_start, &compile_end));
-      printf("Execution time: %.3f ms\n", exec_ms);
-    }
-    onda_env_free(&env);
-    return rc;
-  }
-
-  if (argc == 2) {
-    onda_code_obj_t cobj = {0};
-    onda_code_obj_init(&cobj, ONDA_CODE_BUF_SIZE);
-    if (onda_compile_file(argv[1], &lexer, &env, &cobj) != 0) {
-      fprintf(stderr, "Failed to parse source file: %s\n", argv[1]);
-      onda_code_obj_free(&cobj);
-      onda_env_free(&env);
-      return ONDA_EXIT_COMPILE;
-    }
-
-    onda_program_t prog = {
-        .code = cobj.code,
-        .code_size = cobj.size,
-        .entry_pc = cobj.entry_pc,
-        .const_pool = cobj.const_pool,
-        .const_pool_size = cobj.const_pool_size,
-    };
-    int rc = run_program(&prog, &env, false, false, NULL);
-    onda_code_obj_free(&cobj);
-    onda_env_free(&env);
-    return rc;
-  }
-
-  fprintf(stderr, "Unknown command: %s\n", cmd);
-  usage(argv[0]);
   onda_env_free(&env);
-  return ONDA_EXIT_USAGE;
+  return rc;
 }
