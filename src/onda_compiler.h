@@ -42,6 +42,8 @@ typedef struct {
   const char* filepath;
   const char* import_stack[ONDA_MAX_IMPORT_DEPTH];
   size_t import_depth;
+  uint32_t current_file_id;
+  uint32_t next_file_id;
   size_t pos;
   size_t line;
   size_t column;
@@ -55,17 +57,26 @@ typedef struct onda_word_t {
   size_t word_len;      // length of the word body in bytecode
   uint8_t locals_count; // Number of locals including arguments and temporaries
   uint8_t args_count;
+  uint32_t owner_file_id;
+  uint8_t is_exported;
 } onda_word_t;
 
 typedef struct onda_alias_t {
   char name[ONDA_MAX_WORD_NAME_LEN];
   size_t name_len;
   char* body_src;
+  uint32_t owner_file_id;
+  uint8_t is_exported;
 } onda_alias_t;
 
 typedef struct onda_scope {
   onda_dict_t locals;
 } onda_scope_t;
+
+typedef struct {
+  onda_dict_t words;
+  onda_dict_t aliases;
+} onda_file_symbols_t;
 
 typedef struct {
   // Bytecode buffer
@@ -78,15 +89,19 @@ typedef struct {
   uint8_t* const_pool;
   size_t const_pool_size;
   size_t const_pool_capacity;
-  // Mapping of word names to their definitions
+  // Mapping of exported word names to their definitions
   onda_dict_t words_map;
   // Word definitions
   onda_word_t* words;
   size_t words_count;
-  // Alias definitions
+  // Mapping of exported alias names to their definitions
   onda_dict_t aliases_map;
   onda_alias_t* aliases;
   size_t aliases_count;
+  // Per-file symbol maps used for file-local/private symbol resolution.
+  onda_file_symbols_t* file_symbols;
+  size_t file_symbols_count;
+  size_t file_symbols_capacity;
   // Current alias expansion depth used to avoid infinite alias recursion.
   size_t alias_expand_depth;
   // Labels for direct jumps
@@ -104,6 +119,8 @@ typedef struct {
   uint8_t recent_opcodes[ONDA_OPCODE_HISTORY_SIZE];
   size_t recent_opcode_pos[ONDA_OPCODE_HISTORY_SIZE];
   uint8_t recent_opcode_count;
+  // True when the next ':' or '::' definition should be exported.
+  uint8_t pending_export;
 } onda_code_obj_t;
 
 // Push recently emitted opcode for peephole optimization tracking

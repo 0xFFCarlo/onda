@@ -8,6 +8,7 @@ typedef struct {
   const char* key;
   size_t key_len;
   uint64_t value;
+  uint8_t owns_key;
 } onda_dict_slot_t;
 
 typedef struct {
@@ -34,5 +35,12 @@ void onda_dict_put(onda_dict_t* d,
                    const char* key,
                    size_t key_len,
                    uint64_t value);
+
+// Put a key-value pair without copying the key string.
+// The caller must guarantee key memory stays valid while d is in use.
+void onda_dict_put_borrowed(onda_dict_t* d,
+                            const char* key,
+                            size_t key_len,
+                            uint64_t value);
 
 #endif // ONDA_DICT_H

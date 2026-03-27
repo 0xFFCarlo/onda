@@ -23,7 +23,8 @@ static void _onda_dict_put(onda_dict_t* d,
                            const char* key,
                            size_t key_len,
                            uint64_t value,
-                           bool alloc_key);
+                           bool alloc_key,
+                           uint8_t owns_key);
 
 static void onda_dict_resize(onda_dict_t* d, size_t new_cap) {
   onda_dict_slot_t* old = d->slots;
@@ -35,7 +36,12 @@ static void onda_dict_resize(onda_dict_t* d, size_t new_cap) {
 
   for (size_t i = 0; i < old_cap; i++) {
     if (old[i].key)
-      _onda_dict_put(d, old[i].key, old[i].key_len, old[i].value, false);
+      _onda_dict_put(d,
+                     old[i].key,
+                     old[i].key_len,
+                     old[i].value,
+                     false,
+                     old[i].owns_key);
   }
   if (old)
     onda_free(old);
@@ -45,7 +51,8 @@ static void _onda_dict_put(onda_dict_t* d,
                            const char* key,
                            size_t key_len,
                            uint64_t value,
-                           bool alloc_key) {
+                           bool alloc_key,
+                           uint8_t owns_key) {
   if (d->count * 2 >= d->capacity)
     onda_dict_resize(d, d->capacity ? d->capacity * 2 : 16);
 
@@ -60,6 +67,7 @@ static void _onda_dict_put(onda_dict_t* d,
       s->key = alloc_key ? dup_span(key, key_len) : key;
       s->key_len = key_len;
       s->value = value;
+      s->owns_key = owns_key;
       d->count++;
       return;
     }
@@ -82,7 +90,8 @@ void onda_dict_free(onda_dict_t* d) {
     return;
 
   for (size_t i = 0; i < d->capacity; i++)
-    onda_free((char*)d->slots[i].key);
+    if (d->slots[i].key && d->slots[i].owns_key)
+      onda_free((char*)d->slots[i].key);
   onda_free(d->slots);
 
   d->slots = NULL;
@@ -119,5 +128,12 @@ void onda_dict_put(onda_dict_t* d,
                    const char* key,
                    size_t key_len,
                    uint64_t value) {
-  _onda_dict_put(d, key, key_len, value, true);
+  _onda_dict_put(d, key, key_len, value, true, 1);
+}
+
+void onda_dict_put_borrowed(onda_dict_t* d,
+                            const char* key,
+                            size_t key_len,
+                            uint64_t value) {
+  _onda_dict_put(d, key, key_len, value, false, 0);
 }

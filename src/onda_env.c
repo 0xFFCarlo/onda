@@ -56,6 +56,9 @@ int onda_env_register_native_fn(onda_env_t* env,
   items[idx].returns_count = returns_count;
   env->native_registry.items = items;
   env->native_registry.count++;
-  onda_dict_put(&env->native_registry.items_map, name, strlen(name), idx);
+  onda_dict_put_borrowed(&env->native_registry.items_map,
+                         name,
+                         strlen(name),
+                         idx);
   return 0;
 }

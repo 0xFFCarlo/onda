@@ -1,4 +1,4 @@
-:fib
+export :fib
   if dup 2 < then
    if dup 0 == then drop 0 else drop 1 end
   else

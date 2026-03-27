@@ -16,7 +16,8 @@ static int validate_name_availability(onda_lexer_t* lexer,
                                       onda_env_t* env,
                                       onda_code_obj_t* cobj,
                                       const onda_token_t* tok,
-                                      const char* symbol_kind);
+                                      const char* symbol_kind,
+                                      bool check_exported_namespace);
 
 static inline char curr(onda_lexer_t* lx) {
   return lx->src[lx->pos];
@@ -54,8 +55,8 @@ static void skip_whitespace_and_comments(onda_lexer_t* lx) {
   }
 }
 
-// Decode a string literal (without surrounding quotes) into arena memory.
-// Supports escapes: \n \t \r \" \\ . Returns 0 on success.
+// Lex a string literal body span (without surrounding quotes).
+// Escapes are decoded later when emitting/importing.
 static int lex_string(onda_lexer_t* lx, const char** dst, size_t* dst_len) {
   // opening '"' already at curr(lx)
   advance(lx); // skip the opening quote
@@ -76,52 +77,64 @@ static int lex_string(onda_lexer_t* lx, const char** dst, size_t* dst_len) {
     return -1; // unterminated
 
   size_t end_pos = lx->pos; // position of closing quote
-  // Allocate a buffer of worst-case size (every escape becomes 1 char)
-  int raw_len = (int)(end_pos - start_pos);
-  char* buf = (char*)onda_calloc(1, (size_t)raw_len + 1);
-  if (!buf)
-    return -1;
-
-  // Second pass: actually decode
-  const char* src = lx->src + start_pos;
-  int si = 0;
-  int di = 0;
-  while (si < raw_len) {
-    char c = src[si++];
-    if (c == '\\' && si < raw_len) {
-      char esc = src[si++];
-      switch (esc) {
-      case 'n':
-        buf[di++] = '\n';
-        break;
-      case 't':
-        buf[di++] = '\t';
-        break;
-      case 'r':
-        buf[di++] = '\r';
-        break;
-      case '"':
-        buf[di++] = '"';
-        break;
-      case '\\':
-        buf[di++] = '\\';
-        break;
-      default:
-        buf[di++] = esc;
-        break; // unknown escape -> literal
-      }
-    } else {
-      buf[di++] = c;
-    }
-  }
-  buf[di] = '\0';
-
   // consume closing quote
   advance(lx);
 
-  *dst = buf;
-  *dst_len = di;
+  *dst = lx->src + start_pos;
+  *dst_len = end_pos - start_pos;
   return 0;
+}
+
+static inline size_t decoded_string_len(const char* src, size_t len) {
+  size_t di = 0;
+  for (size_t si = 0; si < len;) {
+    char c = src[si++];
+    if (c == '\\' && si < len) {
+      (void)src[si++]; // escaped char decodes to one byte
+      di++;
+    } else {
+      di++;
+    }
+  }
+  return di;
+}
+
+static inline void decode_string_into(const char* src,
+                                      size_t len,
+                                      char* dst,
+                                      size_t* out_len) {
+  size_t si = 0;
+  size_t di = 0;
+  while (si < len) {
+    char c = src[si++];
+    if (c == '\\' && si < len) {
+      char esc = src[si++];
+      switch (esc) {
+      case 'n':
+        dst[di++] = '\n';
+        break;
+      case 't':
+        dst[di++] = '\t';
+        break;
+      case 'r':
+        dst[di++] = '\r';
+        break;
+      case '"':
+        dst[di++] = '"';
+        break;
+      case '\\':
+        dst[di++] = '\\';
+        break;
+      default:
+        dst[di++] = esc;
+        break;
+      }
+    } else {
+      dst[di++] = c;
+    }
+  }
+  if (out_len)
+    *out_len = di;
 }
 
 static inline void print_err(onda_lexer_t* lx, const char* msg, ...) {
@@ -372,7 +385,8 @@ static inline int code_pool_push_string(onda_code_obj_t* cobj,
                                         const char* str,
                                         size_t str_len,
                                         uint32_t* out_offset) {
-  const size_t size_needed = str_len + 1;
+  const size_t decoded_len = decoded_string_len(str, str_len);
+  const size_t size_needed = decoded_len + 1;
   if (cobj->const_pool_size + size_needed > UINT32_MAX) {
     fprintf(stderr, "Constant pool overflow\n");
     return -1;
@@ -391,8 +405,12 @@ static inline int code_pool_push_string(onda_code_obj_t* cobj,
     cobj->const_pool_capacity = new_capacity;
   }
   *out_offset = (uint32_t)cobj->const_pool_size;
-  memcpy(cobj->const_pool + cobj->const_pool_size, str, str_len);
-  cobj->const_pool[cobj->const_pool_size + str_len] = '\0';
+  size_t written = 0;
+  decode_string_into(str,
+                     str_len,
+                     (char*)cobj->const_pool + cobj->const_pool_size,
+                     &written);
+  cobj->const_pool[cobj->const_pool_size + written] = '\0';
   cobj->const_pool_size += size_needed;
   return 0;
 }
@@ -457,9 +475,59 @@ static int onda_compile_expr(onda_lexer_t* lexer,
                              onda_env_t* env,
                              onda_code_obj_t* cobj);
 
+static int ensure_file_symbols(onda_code_obj_t* cobj, uint32_t file_id) {
+  if ((size_t)file_id >= cobj->file_symbols_capacity) {
+    size_t new_cap = cobj->file_symbols_capacity ? cobj->file_symbols_capacity : 4;
+    while (new_cap <= (size_t)file_id)
+      new_cap *= 2;
+    onda_file_symbols_t* new_syms =
+        realloc(cobj->file_symbols, new_cap * sizeof(onda_file_symbols_t));
+    if (!new_syms)
+      return -1;
+    cobj->file_symbols = new_syms;
+    cobj->file_symbols_capacity = new_cap;
+  }
+  while (cobj->file_symbols_count <= (size_t)file_id) {
+    onda_file_symbols_t* fs = &cobj->file_symbols[cobj->file_symbols_count++];
+    onda_dict_init(&fs->words);
+    onda_dict_init(&fs->aliases);
+  }
+  return 0;
+}
+
+static inline onda_file_symbols_t* file_symbols_for(onda_code_obj_t* cobj,
+                                                    uint32_t file_id) {
+  if ((size_t)file_id >= cobj->file_symbols_count)
+    return NULL;
+  return &cobj->file_symbols[file_id];
+}
+
+static int resolve_word_id(onda_code_obj_t* cobj,
+                           uint32_t file_id,
+                           const char* name,
+                           size_t name_len,
+                           uint64_t* out_word_id) {
+  onda_file_symbols_t* fs = file_symbols_for(cobj, file_id);
+  if (fs && onda_dict_get(&fs->words, name, name_len, out_word_id) == 0)
+    return 0;
+  return onda_dict_get(&cobj->words_map, name, name_len, out_word_id);
+}
+
+static int resolve_alias_id(onda_code_obj_t* cobj,
+                            uint32_t file_id,
+                            const char* name,
+                            size_t name_len,
+                            uint64_t* out_alias_id) {
+  onda_file_symbols_t* fs = file_symbols_for(cobj, file_id);
+  if (fs && onda_dict_get(&fs->aliases, name, name_len, out_alias_id) == 0)
+    return 0;
+  return onda_dict_get(&cobj->aliases_map, name, name_len, out_alias_id);
+}
+
 static int onda_finalize_entry(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   uint64_t word_id = 0;
-  if (onda_dict_get(&cobj->words_map, "main", 4, &word_id) != 0)
+  onda_file_symbols_t* fs = file_symbols_for(cobj, lexer->current_file_id);
+  if (!fs || onda_dict_get(&fs->words, "main", 4, &word_id) != 0)
     return 0;
 
   const onda_word_t* main_word = &cobj->words[word_id];
@@ -653,17 +721,31 @@ static int onda_compile_import(onda_lexer_t* lexer,
     return -1;
   }
 
-  if (tok.len >= sizeof(path)) {
+  const size_t decoded_len = decoded_string_len(tok.start, tok.len);
+  if (decoded_len >= sizeof(path)) {
     print_err(lexer, "Import path too long");
     return -1;
   }
 
-  memcpy(path, tok.start, (size_t)tok.len);
-  path[tok.len] = '\0';
+  size_t written = 0;
+  decode_string_into(tok.start, tok.len, path, &written);
+  path[written] = '\0';
 
   return onda_compile_file(path, lexer, env, cobj);
 }
 #endif
+
+static int onda_compile_export(onda_lexer_t* lexer,
+                               onda_env_t* env,
+                               onda_code_obj_t* cobj) {
+  (void)env;
+  if (cobj->pending_export) {
+    print_err(lexer, "Duplicate 'export' before symbol definition");
+    return -1;
+  }
+  cobj->pending_export = 1;
+  return 0;
+}
 
 static int onda_compile_continue(onda_lexer_t* lexer,
                                  onda_env_t* env,
@@ -693,7 +775,7 @@ static int onda_compile_label(onda_lexer_t* lexer,
     return -1;
   }
   // Check if it is valid name and not conflicting with imm words or builtins
-  if (validate_name_availability(lexer, env, cobj, &tok, "label") != 0)
+  if (validate_name_availability(lexer, env, cobj, &tok, "label", false) != 0)
     return -1;
   onda_dict_put(&cobj->labels_map, tok.start, tok.len, cobj->size);
   return 0;
@@ -756,6 +838,7 @@ static const onda_imm_word_t imm_words[] = {
 #if ONDA_HAS_FILESYSTEM
     {"import", .handler = onda_compile_import},
 #endif
+    {"export", .handler = onda_compile_export},
 };
 static const size_t num_imm_words = sizeof(imm_words) / sizeof(imm_words[0]);
 
@@ -773,7 +856,8 @@ static int validate_name_availability(onda_lexer_t* lexer,
                                       onda_env_t* env,
                                       onda_code_obj_t* cobj,
                                       const onda_token_t* tok,
-                                      const char* symbol_kind) {
+                                      const char* symbol_kind,
+                                      bool check_exported_namespace) {
   if (tok->len >= ONDA_MAX_WORD_NAME_LEN) {
     print_err(lexer,
               "%s name '%.*s' exceeds max length of %d",
@@ -815,8 +899,14 @@ static int validate_name_availability(onda_lexer_t* lexer,
     return -1;
   }
 
+  if (ensure_file_symbols(cobj, lexer->current_file_id) != 0) {
+    print_err(lexer, "Out of memory while creating file symbol table");
+    return -1;
+  }
+
   uint64_t id;
-  if (onda_dict_get(&cobj->words_map, tok->start, tok->len, &id) == 0) {
+  onda_file_symbols_t* fs = file_symbols_for(cobj, lexer->current_file_id);
+  if (fs && onda_dict_get(&fs->words, tok->start, tok->len, &id) == 0) {
     print_err(lexer,
               "%s name '%.*s' conflicts with word name\n",
               symbol_kind,
@@ -824,9 +914,27 @@ static int validate_name_availability(onda_lexer_t* lexer,
               tok->start);
     return -1;
   }
-  if (onda_dict_get(&cobj->aliases_map, tok->start, tok->len, &id) == 0) {
+  if (fs && onda_dict_get(&fs->aliases, tok->start, tok->len, &id) == 0) {
     print_err(lexer,
               "%s name '%.*s' conflicts with alias name\n",
+              symbol_kind,
+              tok->len,
+              tok->start);
+    return -1;
+  }
+  if (check_exported_namespace &&
+      onda_dict_get(&cobj->words_map, tok->start, tok->len, &id) == 0) {
+    print_err(lexer,
+              "%s name '%.*s' conflicts with exported word name\n",
+              symbol_kind,
+              tok->len,
+              tok->start);
+    return -1;
+  }
+  if (check_exported_namespace &&
+      onda_dict_get(&cobj->aliases_map, tok->start, tok->len, &id) == 0) {
+    print_err(lexer,
+              "%s name '%.*s' conflicts with exported alias name\n",
               symbol_kind,
               tok->len,
               tok->start);
@@ -848,12 +956,14 @@ static int validate_symbol_name(onda_lexer_t* lexer,
                                 onda_env_t* env,
                                 onda_code_obj_t* cobj,
                                 const onda_token_t* tok,
-                                bool is_alias) {
+                                bool is_alias,
+                                bool is_exported) {
   return validate_name_availability(lexer,
                                     env,
                                     cobj,
                                     tok,
-                                    is_alias ? "Alias" : "Word");
+                                    is_alias ? "Alias" : "Word",
+                                    is_exported);
 }
 
 static int onda_compile_word(onda_lexer_t* lexer,
@@ -861,6 +971,8 @@ static int onda_compile_word(onda_lexer_t* lexer,
                              onda_code_obj_t* cobj) {
   int rc = -1;
   bool has_scope = false;
+  const uint8_t is_exported = cobj->pending_export;
+  cobj->pending_export = 0;
   onda_word_t word = {0};
   onda_token_t tok;
   onda_token_next(lexer, &tok);
@@ -868,7 +980,7 @@ static int onda_compile_word(onda_lexer_t* lexer,
     print_err(lexer, "Expected word name after ':'");
     return -1;
   }
-  if (validate_symbol_name(lexer, env, cobj, &tok, false) != 0)
+  if (validate_symbol_name(lexer, env, cobj, &tok, false, is_exported) != 0)
     return -1;
 
   if (strncmp(tok.start, "main", tok.len) == 0)
@@ -878,9 +990,23 @@ static int onda_compile_word(onda_lexer_t* lexer,
   strncpy(word.name, tok.start, (size_t)tok.len);
   word.name_len = (size_t)tok.len;
   word.pc = cobj->size;
-  onda_dict_put(&cobj->words_map, word.name, word.name_len, cobj->words_count);
-  cobj->words =
+  word.owner_file_id = lexer->current_file_id;
+  word.is_exported = is_exported;
+  if (ensure_file_symbols(cobj, lexer->current_file_id) != 0) {
+    print_err(lexer, "Out of memory while creating file symbol table");
+    return -1;
+  }
+  onda_file_symbols_t* fs = file_symbols_for(cobj, lexer->current_file_id);
+  onda_dict_put(&fs->words, word.name, word.name_len, cobj->words_count);
+  if (is_exported)
+    onda_dict_put(&cobj->words_map, word.name, word.name_len, cobj->words_count);
+  onda_word_t* new_words =
       realloc(cobj->words, (cobj->words_count + 1) * sizeof(onda_word_t));
+  if (!new_words) {
+    print_err(lexer, "Out of memory while growing word table");
+    return -1;
+  }
+  cobj->words = new_words;
 
   // new scope for word locals
   onda_scope_push(cobj);
@@ -910,7 +1036,8 @@ static int onda_compile_word(onda_lexer_t* lexer,
         goto cleanup;
       }
       onda_token_next(lexer, &tok); // consume argument name
-      if (validate_name_availability(lexer, env, cobj, &tok, "Local") != 0)
+      if (validate_name_availability(lexer, env, cobj, &tok, "Local", false) !=
+          0)
         goto cleanup;
       if (onda_scope_set(cobj, tok.start, tok.len, word.locals_count++) != 0) {
         print_err(
@@ -971,6 +1098,8 @@ static int onda_compile_alias(onda_lexer_t* lexer,
                               onda_env_t* env,
                               onda_code_obj_t* cobj) {
   (void)env; // unused arg
+  const uint8_t is_exported = cobj->pending_export;
+  cobj->pending_export = 0;
   onda_alias_t alias = {0};
   onda_token_t tok;
   onda_token_next(lexer, &tok);
@@ -978,11 +1107,13 @@ static int onda_compile_alias(onda_lexer_t* lexer,
     print_err(lexer, "Expected alias name after '::'");
     return -1;
   }
-  if (validate_symbol_name(lexer, env, cobj, &tok, true) != 0)
+  if (validate_symbol_name(lexer, env, cobj, &tok, true, is_exported) != 0)
     return -1;
 
   strncpy(alias.name, tok.start, (size_t)tok.len);
   alias.name_len = (size_t)tok.len;
+  alias.owner_file_id = lexer->current_file_id;
+  alias.is_exported = is_exported;
 
   const size_t body_start = lexer->pos;
   size_t body_end = body_start;
@@ -1014,13 +1145,27 @@ static int onda_compile_alias(onda_lexer_t* lexer,
   memcpy(alias.body_src, lexer->src + body_start, body_len);
   alias.body_src[body_len] = '\0';
 
-  cobj->aliases =
+  onda_alias_t* new_aliases =
       realloc(cobj->aliases, (cobj->aliases_count + 1) * sizeof(onda_alias_t));
+  if (!new_aliases) {
+    onda_free(alias.body_src);
+    print_err(lexer, "Out of memory while growing alias table");
+    return -1;
+  }
+  cobj->aliases = new_aliases;
   cobj->aliases[cobj->aliases_count] = alias;
-  onda_dict_put(&cobj->aliases_map,
-                alias.name,
-                alias.name_len,
-                cobj->aliases_count);
+  if (ensure_file_symbols(cobj, lexer->current_file_id) != 0) {
+    onda_free(alias.body_src);
+    print_err(lexer, "Out of memory while creating file symbol table");
+    return -1;
+  }
+  onda_file_symbols_t* fs = file_symbols_for(cobj, lexer->current_file_id);
+  onda_dict_put(&fs->aliases, alias.name, alias.name_len, cobj->aliases_count);
+  if (is_exported)
+    onda_dict_put(&cobj->aliases_map,
+                  alias.name,
+                  alias.name_len,
+                  cobj->aliases_count);
   cobj->aliases_count++;
 
   return 0;
@@ -1031,6 +1176,10 @@ static int onda_compile_expr(onda_lexer_t* lexer,
                              onda_code_obj_t* cobj) {
   onda_token_t tok;
   onda_token_next(lexer, &tok);
+  if (cobj->pending_export && tok.type != TOKEN_COLON) {
+    print_err(lexer, "Expected ':' or '::' after 'export'");
+    return -1;
+  }
 
   switch (tok.type) {
   case TOKEN_COLON:
@@ -1053,7 +1202,12 @@ static int onda_compile_expr(onda_lexer_t* lexer,
 
     // Is it an alias?
     uint64_t alias_id;
-    if (onda_dict_get(&cobj->aliases_map, tok.start, tok.len, &alias_id) == 0) {
+    if (resolve_alias_id(cobj,
+                         lexer->current_file_id,
+                         tok.start,
+                         tok.len,
+                         &alias_id) == 0) {
+      const onda_alias_t* alias = &cobj->aliases[alias_id];
       if (cobj->alias_expand_depth >= ONDA_MAX_IMPORT_DEPTH) {
         print_err(lexer,
                   "Maximum alias expansion depth (%d) exceeded on '%.*s'\n",
@@ -1064,10 +1218,11 @@ static int onda_compile_expr(onda_lexer_t* lexer,
       }
       cobj->alias_expand_depth++;
       onda_lexer_t alias_lexer = *lexer;
-      alias_lexer.src = cobj->aliases[alias_id].body_src;
+      alias_lexer.src = alias->body_src;
       alias_lexer.pos = 0;
       alias_lexer.line = 0;
       alias_lexer.column = 0;
+      alias_lexer.current_file_id = alias->owner_file_id;
       const int rc = onda_compile(&alias_lexer, env, cobj);
       cobj->alias_expand_depth--;
       return rc;
@@ -1075,15 +1230,19 @@ static int onda_compile_expr(onda_lexer_t* lexer,
 
     // Is it a defined word?
     uint64_t word_id;
-    if (onda_dict_get(&cobj->words_map, tok.start, tok.len, &word_id) == 0) {
+    if (resolve_word_id(cobj,
+                        lexer->current_file_id,
+                        tok.start,
+                        tok.len,
+                        &word_id) == 0) {
+      const onda_word_t* word = &cobj->words[word_id];
       CODE_PUSH_OPCODE(ONDA_OP_CALL);
-      CODE_PUSH_BYTE(cobj->words[word_id].args_count);
-      CODE_PUSH_BYTE(cobj->words[word_id].locals_count);
+      CODE_PUSH_BYTE(word->args_count);
+      CODE_PUSH_BYTE(word->locals_count);
       const size_t call_pc = cobj->size;
       CODE_PUSH_BYTES(&word_id, sizeof(int32_t));
       const size_t next_instr_pc = cobj->size;
-      const int32_t offset =
-          ((int32_t)cobj->words[word_id].pc - (int32_t)next_instr_pc);
+      const int32_t offset = ((int32_t)word->pc - (int32_t)next_instr_pc);
       memcpy(&cobj->code[call_pc], &offset, sizeof(int32_t));
       return 0;
     }
@@ -1164,6 +1323,10 @@ int onda_compile(onda_lexer_t* lexer,
     if (rc != 0)
       return rc;
   }
+  if (code_obj->pending_export) {
+    print_err(lexer, "Expected ':' or '::' after 'export'");
+    return -1;
+  }
   if (lexer->import_depth == 0 && code_obj->alias_expand_depth == 0 &&
       code_obj->current_scope == NULL) {
     if (onda_finalize_entry(lexer, code_obj) != 0)
@@ -1194,6 +1357,7 @@ int onda_compile_file(const char* filepath,
   const char* prev_filepath = lexer->filepath;
   const char* prev_filename = lexer->filename;
   const char* prev_src = lexer->src;
+  const uint32_t prev_file_id = lexer->current_file_id;
   const bool is_top_level = prev_src == NULL;
   size_t prev_column = lexer->column, prev_line = lexer->line,
          prev_pos = lexer->pos;
@@ -1245,6 +1409,7 @@ int onda_compile_file(const char* filepath,
   }
 
   // Set lexer state to imported file and compile
+  lexer->current_file_id = ++lexer->next_file_id;
   lexer->filepath = resolved_path;
   lexer->filename = filename;
   lexer->src = import_src;
@@ -1268,6 +1433,7 @@ cleanup:
   lexer->filepath = prev_filepath;
   lexer->filename = prev_filename;
   lexer->src = prev_src;
+  lexer->current_file_id = prev_file_id;
   lexer->column = prev_column;
   lexer->line = prev_line;
   lexer->pos = prev_pos;
@@ -1299,10 +1465,14 @@ int onda_code_obj_init(onda_code_obj_t* cobj, size_t initial_capacity) {
   cobj->words_count = 0;
   cobj->aliases = NULL;
   cobj->aliases_count = 0;
+  cobj->file_symbols = NULL;
+  cobj->file_symbols_count = 0;
+  cobj->file_symbols_capacity = 0;
   cobj->alias_expand_depth = 0;
   cobj->current_scope = NULL;
   cobj->inner_loop_start_pc = -1;
   cobj->recent_opcode_count = 0;
+  cobj->pending_export = 0;
   return 0;
 }
 
@@ -1314,6 +1484,13 @@ void onda_code_obj_free(onda_code_obj_t* cobj) {
   onda_dict_free(&cobj->words_map);
   onda_dict_free(&cobj->aliases_map);
   onda_dict_free(&cobj->labels_map);
+  if (cobj->file_symbols) {
+    for (size_t i = 0; i < cobj->file_symbols_count; i++) {
+      onda_dict_free(&cobj->file_symbols[i].words);
+      onda_dict_free(&cobj->file_symbols[i].aliases);
+    }
+    free(cobj->file_symbols);
+  }
   if (cobj->words)
     free(cobj->words);
   if (cobj->aliases) {

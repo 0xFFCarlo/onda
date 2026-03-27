@@ -349,6 +349,8 @@ static const test_case_t tests[] = {
     TEST("::inc1 1 + ; :main 41 inc1 ;", 1, 42),
     // Alias can be reused and expanded multiple times
     TEST("::twice dup + ; :main 10 twice twice ;", 1, 40),
+    // Exported symbols are valid definitions
+    TEST("export :inc 1 + ; export ::twice dup + ; :main 20 inc twice ;", 1, 42),
     // Signed division/modulo (negative operands)
     TEST("0 3 - 2 / ret", 1, -1),
     TEST("0 3 - 2 % ret", 1, -1),
@@ -366,6 +368,8 @@ static const char* compile_fail_tests[] = {
     ": main ( a: b ) a: ;",
     ": main ( a ) a ;",
     ": main 1",
+    "export 1",
+    "export",
 };
 
 int main(void) {
