@@ -405,27 +405,42 @@ op_store_to_addr_b:
   *(uint8_t*)*sp = *(sp + 1);
   sp += 2;
   DISPATCH();
-op_push_from_addr_hw:
-  *sp = *(uint16_t*)*sp;
+op_push_from_addr_hw : {
+  uint16_t val16 = 0;
+  memcpy(&val16, (const void*)(uintptr_t)*sp, sizeof(val16));
+  *sp = (int64_t)val16;
   DISPATCH();
-op_store_to_addr_hw:
-  *(uint16_t*)*sp = *(sp + 1);
+}
+op_store_to_addr_hw : {
+  const uint16_t val16 = (uint16_t)*(sp + 1);
+  memcpy((void*)(uintptr_t)*sp, &val16, sizeof(val16));
   sp += 2;
   DISPATCH();
-op_push_from_addr_w:
-  *sp = *(uint32_t*)*sp;
+}
+op_push_from_addr_w : {
+  uint32_t val32 = 0;
+  memcpy(&val32, (const void*)(uintptr_t)*sp, sizeof(val32));
+  *sp = (int64_t)val32;
   DISPATCH();
-op_store_to_addr_w:
-  *(uint32_t*)*sp = *(sp + 1);
+}
+op_store_to_addr_w : {
+  const uint32_t val32 = (uint32_t)*(sp + 1);
+  memcpy((void*)(uintptr_t)*sp, &val32, sizeof(val32));
   sp += 2;
   DISPATCH();
-op_push_from_addr_dw:
-  *sp = *(uint64_t*)*sp;
+}
+op_push_from_addr_dw : {
+  uint64_t val64 = 0;
+  memcpy(&val64, (const void*)(uintptr_t)*sp, sizeof(val64));
+  *sp = (int64_t)val64;
   DISPATCH();
-op_store_to_addr_dw:
-  *(uint64_t*)*sp = *(sp + 1);
+}
+op_store_to_addr_dw : {
+  const uint64_t val64 = (uint64_t)*(sp + 1);
+  memcpy((void*)(uintptr_t)*sp, &val64, sizeof(val64));
   sp += 2;
   DISPATCH();
+}
 op_swap:
   tmp = *sp;
   *sp = *(sp + 1);
