@@ -573,7 +573,11 @@ int onda_jit_x86_64(const onda_runtime_t* rt,
       EMIT_IMM64(fn_addr);
       EMITV(0x41, 0xFF, 0xD2); // call r10
       EMITV(0x49, 0x89, 0xC4); // mov r12, rax  (update DS)
-      EMIT_POP_DS_RAX;         // pop new TOS
+      EMITV(0x49, 0xBB);       // mov r11, imm64
+      EMIT_IMM64(data_stack_end_addr);
+      EMITV(0x4D, 0x39, 0xDC); // cmp r12, r11
+      EMITV(0x74, 0x07);       // je +7 (empty stack, skip pop)
+      EMIT_POP_DS_RAX;         // pop new TOS when non-empty
     } break;
 
     case ONDA_OP_CALL: {

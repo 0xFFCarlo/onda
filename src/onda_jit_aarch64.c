@@ -160,9 +160,9 @@ int onda_jit_aarch64(const onda_runtime_t* rt,
   }
 
   // Prologue
-  // x20 = immediate(frame_bp - 2)
+  // x20 = immediate(frame_bp - 4)
   {
-    const uint64_t fb = (uint64_t)(uintptr_t)(frame_bp - 2);
+    const uint64_t fb = (uint64_t)(uintptr_t)(frame_bp - 4);
     EMIT(AA64_MOVZ(FS_REG, (fb >> 0) & 0xFFFF, 0));
     EMIT(AA64_MOVK(FS_REG, (fb >> 16) & 0xFFFF, 16));
     EMIT(AA64_MOVK(FS_REG, (fb >> 32) & 0xFFFF, 32));
@@ -178,6 +178,8 @@ int onda_jit_aarch64(const onda_runtime_t* rt,
   }
   EMIT(AA64_STRU(30, FS_REG, 0)); // x30 (lr) -> frame[0] = return address
   EMIT(AA64_STRU(31, FS_REG, 8)); // x31 (xzr) -> frame[1] = 0
+  EMIT(AA64_STRU(19, FS_REG, 16)); // preserve callee-saved registers
+  EMIT(AA64_STRU(20, FS_REG, 24));
 
   // Jump to start of program
   if (bytecode_entry_pc > 0)
@@ -544,7 +546,16 @@ int onda_jit_aarch64(const onda_runtime_t* rt,
       EMIT(AA64_BLR(3));
       // After return, x0 has the new ds, so restore it to ds
       EMIT(AA64_MOV(DS_REG, 0)); // ds = x0
-      // Pop ToS to x0 as return value from CALL_NATIVE
+      {
+        const uint64_t dse = (uint64_t)(uintptr_t)data_stack_end;
+        EMIT(AA64_MOVZ(1, (dse >> 0) & 0xFFFF, 0));
+        EMIT(AA64_MOVK(1, (dse >> 16) & 0xFFFF, 16));
+        EMIT(AA64_MOVK(1, (dse >> 32) & 0xFFFF, 32));
+        EMIT(AA64_MOVK(1, (dse >> 48) & 0xFFFF, 48));
+      }
+      EMIT(AA64_SUB(1, 1, DS_REG));
+      EMIT(AA64_CBZ(1, 2));
+      // Pop ToS to x0 as return value from CALL_NATIVE when non-empty.
       EMIT(AA64_POP_STACK(0));
     } break;
     case ONDA_OP_CALL: {
@@ -602,9 +613,10 @@ int onda_jit_aarch64(const onda_runtime_t* rt,
       EMIT(AA64_LDRU(6, FS_REG, 8));  // x6 = frame[1] (previous frame_bp)
       // if x6 == 0, jump to root-return path
       // +N instructions to skip over nested return path
-      EMIT(AA64_CBZ(6, 2));
+      EMIT(AA64_CBZ(6, 3));
       // normal nested return:
       EMIT2(AA64_MOV(FS_REG, 6), AA64_RET);
+      EMIT2(AA64_LDRU(19, FS_REG, 16), AA64_LDRU(20, FS_REG, 24));
       EMIT(AA64_RET); // root return to C which restores SP:
       break;
     default:

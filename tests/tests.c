@@ -60,6 +60,7 @@ static const test_case_t tests[] = {
 
     // --- ADD (+): minimal extra coverage (order shouldn't matter)
     TEST("2 4 + ret", 1, 6),
+    TEST("10 2 +", 1, 12),
 
     // --- SUB (-): cover negative result explicitly
     TEST("4 1 - ret", 1, 3),
@@ -162,6 +163,8 @@ static const test_case_t tests[] = {
     TEST("10 20 depth ret", 3, 2, 20),
     // .stack: ( -- ) prints whole stack and keeps it unchanged
     TEST("10 20 .stack ret", 2, 20, 10),
+    // Native word consumes TOS and then falls through implicit top-level RET.
+    TEST("10 .", 0, 0),
 
     //===================
     // If condition

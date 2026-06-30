@@ -24,12 +24,26 @@ SRC_NO_MAIN := $(filter-out src/main.c,$(SRC))
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 
-all:
-	mkdir -p bin
-	$(CC) $(CFLAGS) $(SRC) -o bin/ondac
-	$(CC) $(CFLAGS) $(SRC_NO_MAIN) $(TESTS) -o bin/tests_ondac
+.PHONY: all tests check clean distclean install uninstall
 
-install: all
+all: bin/ondac bin/tests_ondac
+
+bin/ondac: $(SRC)
+	mkdir -p bin
+	$(CC) $(CFLAGS) $(SRC) -o $@
+
+tests check: bin/tests_ondac
+
+bin/tests_ondac: $(SRC_NO_MAIN) $(TESTS)
+	mkdir -p bin
+	$(CC) $(CFLAGS) $(SRC_NO_MAIN) $(TESTS) -o $@
+
+clean:
+	rm -f bin/ondac bin/tests_ondac
+
+distclean: clean
+
+install: bin/ondac
 	mkdir -p $(BINDIR)
 	cp bin/ondac $(BINDIR)/ondac
 	ln -sf $(BINDIR)/ondac $(BINDIR)/onda

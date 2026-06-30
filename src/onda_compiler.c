@@ -527,8 +527,12 @@ static int resolve_alias_id(onda_code_obj_t* cobj,
 static int onda_finalize_entry(onda_lexer_t* lexer, onda_code_obj_t* cobj) {
   uint64_t word_id = 0;
   onda_file_symbols_t* fs = file_symbols_for(cobj, lexer->current_file_id);
-  if (!fs || onda_dict_get(&fs->words, "main", 4, &word_id) != 0)
+  if (!fs || onda_dict_get(&fs->words, "main", 4, &word_id) != 0) {
+    if (cobj->recent_opcode_count == 0 ||
+        cobj->recent_opcodes[cobj->recent_opcode_count - 1] != ONDA_OP_RET)
+      CODE_PUSH_OPCODE(ONDA_OP_RET);
     return 0;
+  }
 
   const onda_word_t* main_word = &cobj->words[word_id];
   if (main_word->args_count != 0) {

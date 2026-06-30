@@ -1,8 +1,17 @@
+:: BOARD_SIZE 9 ;
+:: BOX_SIZE 3 ;
+:: CELL_COUNT BOARD_SIZE BOARD_SIZE * ;
+:: MAX_DIGIT 9 ;
+:: ASCII_ZERO 48 ;
+
+:: CELL_ADDR swap BOARD_SIZE * + + ;
+:: CELL@ CELL_ADDR b@ ;   :: CELL! CELL_ADDR b! ;
+
 : print_board ( board | i j )
   "Board:\n" .s
-  0 -> i while i 9 < do
-    0 -> j while j 9 < do
-      board i 9 * j + + b@
+  0 -> i while i BOARD_SIZE < do
+    0 -> j while j BOARD_SIZE < do
+      board i j CELL@
       if dup 0 == then drop "." .s else . end
       " " .s
       j ++ -> j
@@ -13,25 +22,21 @@
   "" .s
 ;
 
-: load_sudoku ( filename | board fp i j cell char )
+: load_sudoku ( filename | board fp pos char )
   filename "r" fopen -> fp
   if fp not then "Error opening file\n" .s exit end
 
-  9 9 * malloc -> board
-  board 0 9 9 * memset
+  CELL_COUNT malloc -> board
+  board 0 CELL_COUNT memset
   1 malloc -> char
 
-  0 -> i while i 9 < do
-    0 -> j while j 9 < do
-      board i 9 * j + + -> cell
-      if char 1 1 fp fread not then "Error reading file\n" .s exit end
-      if char b@ 48 < char b@ 48 9 + > or then
-        continue
-      end
-      char b@ 48 - cell b!
-      j ++ -> j
+  0 -> pos while pos CELL_COUNT < do
+    if char 1 1 fp fread not then "Error reading file\n" .s exit end
+    if char b@ ASCII_ZERO < char b@ ASCII_ZERO MAX_DIGIT + > or then
+      continue
     end
-    i ++ -> i
+    char b@ ASCII_ZERO - board pos + b!
+    pos ++ -> pos
   end
 
   char free
@@ -39,73 +44,62 @@
   board
 ;
 
-: can_place ( board row col num | x y row0 col0 valid )
-  1 -> valid
-
-  0 -> x while x 9 < do
-    if valid then
-      if board row 9 * x + + b@ num == then
-        0 -> valid
-      end
+: can_place ( board row col num | x y row0 col0 )
+  0 -> x while x BOARD_SIZE < do
+    if board row x CELL@ num == then
+      0 ret
     end
     x ++ -> x
   end
 
-  0 -> x while x 9 < do
-    if valid then
-      if board x 9 * col + + b@ num == then
-        0 -> valid
-      end
+  0 -> x while x BOARD_SIZE < do
+    if board x col CELL@ num == then
+      0 ret
     end
     x ++ -> x
   end
 
-  row 3 / 3 * -> row0
-  col 3 / 3 * -> col0
-  0 -> x while x 3 < do
-    0 -> y while y 3 < do
-      if valid then
-        if board row0 x + 9 * col0 y + + + b@ num == then
-          0 -> valid
-        end
+  row BOX_SIZE / BOX_SIZE * -> row0
+  col BOX_SIZE / BOX_SIZE * -> col0
+  0 -> x while x BOX_SIZE < do
+    0 -> y while y BOX_SIZE < do
+      if board row0 x + col0 y + CELL@ num == then
+        0 ret
       end
       y ++ -> y
     end
     x ++ -> x
   end
 
-  valid
+  1
 ;
 
-: solve_sudoku ( board pos | row col cell num solved )
-  if pos 9 9 * == then
-    1
-  else
-    pos 9 / -> row
-    pos 9 % -> col
-    board row 9 * col + + -> cell
-
-    if cell b@ 0 != then
-      board pos 1 + solve_sudoku
-    else
-      0 -> solved
-      1 -> num
-      while num 9 <= do
-        if solved not then
-          if board row col num can_place then
-            num cell b!
-            if board pos 1 + solve_sudoku then
-              1 -> solved
-            else
-              0 cell b!
-            end
-          end
-        end
-        num ++ -> num
-      end
-      solved
-    end
+: solve_sudoku ( board pos | row col num )
+  if pos CELL_COUNT == then
+    1 ret
   end
+
+  pos BOARD_SIZE / -> row
+  pos BOARD_SIZE % -> col
+
+  if board row col CELL@ 0 != then
+    board pos 1 + solve_sudoku ret
+  end
+
+  1 -> num
+  while num MAX_DIGIT <= do
+    if board row col num can_place then
+      num board row col CELL!
+      if board pos 1 + solve_sudoku then
+        1 ret
+      else
+        0 board row col CELL!
+      end
+    end
+    num ++ -> num
+  end
+
+  0
 ;
 
 : main
