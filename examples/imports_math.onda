@@ -1,2 +1,2 @@
-export : square ( n ) n n * ;
-export : cube ( n ) n square n * ;
+pub : square ( n ) n n * ;
+pub : cube ( n ) n square n * ;

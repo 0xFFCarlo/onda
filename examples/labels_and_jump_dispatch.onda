@@ -14,7 +14,7 @@
   jump
 ;
 
-: run ( table code | pc )
+: run ( table code ) [ pc ]
   0 -> pc
   dispatch
 
@@ -31,7 +31,7 @@
   ret
 ;
 
-: main ( | table code )
+: main [ table code ]
   # Dispatch table: opcode -> handler label.
   3 8 * malloc -> table
   op_push_u8_handler table op_push_u8 []!

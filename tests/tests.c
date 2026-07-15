@@ -181,16 +181,16 @@ static const test_case_t tests[] = {
     //===================
     TEST("10 while dup 2 > do -- end ret", 1, 2),
     TEST("5 while dup 0 > do 1 - end drop ret", 0, 0),
-    TEST("0 while dup 10 < do ++ if dup 9 != then continue end 10 * end ret",
+    TEST("0 while dup 10 < do ++ if dup 9 != then next end 10 * end ret",
          1,
          90),
     // Computed jump via label address (backward jump loop).
-    TEST(": main ( | i ) 0 -> i label loop i 1 + -> i if i 5 < then loop jump end i ;",
+    TEST(": main [ i ] 0 -> i label loop i 1 + -> i if i 5 < then loop jump end i ;",
          1,
          5),
-    // Single loop: sum 1..10 but skip 5 using continue
+    // Single loop: sum 1..10 but skip 5 using next
     TEST("0 10 while dup 0 > do "
-         "if dup 5 == then -- continue end "
+         "if dup 5 == then -- next end "
          "swap over + swap "
          "-- "
          "end drop ret",
@@ -222,7 +222,7 @@ static const test_case_t tests[] = {
          1,
          25),
     // Words with local temporaries and local assignment/access
-    TEST(": dist2 ( a b | aa bb ) "
+    TEST(": dist2 ( a b ) [ aa bb ] "
          "a a * -> aa "
          "b b * -> bb "
          "aa bb + ; "
@@ -230,16 +230,16 @@ static const test_case_t tests[] = {
          1,
          25),
     // Main word with local temporaries
-    TEST(": main ( | tmp ) 10 -> tmp tmp ;", 1, 10),
-    // Word with local temporaries and nested loop with continue statements
-    TEST(": countdown ( n k | start_k i ) "
+    TEST(": main [ tmp ] 10 -> tmp tmp ;", 1, 10),
+    // Word with local temporaries and nested loop with next statements
+    TEST(": countdown ( n k ) [ start_k i ] "
          "  0 -> i "
          "  k -> start_k "
          "  while n 0 > do "
-         "    if n 3 == then n -- -> n continue end "
+         "    if n 3 == then n -- -> n next end "
          "    start_k -> k "
          "    while k 0 > do "
-         "      if k 2 == then k -- -> k continue end "
+         "      if k 2 == then k -- -> k next end "
          "      i n + -> i "
          "      k -- -> k "
          "    end"
@@ -290,7 +290,7 @@ static const test_case_t tests[] = {
     TEST("\"a\" \"b\" strcmp 0 < ret", 1, 1),
     TEST("\"ab\" \"aa\" 2 memcmp 0 > ret", 1, 1),
     TEST("\"ab\" \"aa\" 2 strncmp 0 > ret", 1, 1),
-    TEST(":cpy1 ( | dst src ) 1 16 calloc -> dst 1 16 calloc -> src "
+    TEST(":cpy1 [ dst src ] 1 16 calloc -> dst 1 16 calloc -> src "
          "65 src b! "
          "dst src 1 memcpy "
          "dst b@ ; "
@@ -347,13 +347,13 @@ static const test_case_t tests[] = {
     // Immediate arithmetic fusion paths
     TEST("5 3 * 1 + ret", 1, 16),
     // Fused local inc/dec must preserve caller TOS
-    TEST(": f ( | x ) 1 -> x x -- -> x x ; : main 7 f + ;", 1, 7),
+    TEST(": f [ x ] 1 -> x x -- -> x x ; : main 7 f + ;", 1, 7),
     // Alias word inlines body at call site
     TEST("::inc1 1 + ; :main 41 inc1 ;", 1, 42),
     // Alias can be reused and expanded multiple times
     TEST("::twice dup + ; :main 10 twice twice ;", 1, 40),
     // Exported symbols are valid definitions
-    TEST("export :inc 1 + ; export ::twice dup + ; :main 20 inc twice ;", 1, 42),
+    TEST("pub :inc 1 + ; pub ::twice dup + ; :main 20 inc twice ;", 1, 42),
     // Signed division/modulo (negative operands)
     TEST("0 3 - 2 / ret", 1, -1),
     TEST("0 3 - 2 % ret", 1, -1),
@@ -371,8 +371,8 @@ static const char* compile_fail_tests[] = {
     ": main ( a: b ) a: ;",
     ": main ( a ) a ;",
     ": main 1",
-    "export 1",
-    "export",
+    "pub 1",
+    "pub",
 };
 
 int main(void) {

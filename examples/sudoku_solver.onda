@@ -7,7 +7,7 @@
 :: CELL_ADDR swap BOARD_SIZE * + + ;
 :: CELL@ CELL_ADDR b@ ;   :: CELL! CELL_ADDR b! ;
 
-: print_board ( board | i j )
+: print_board ( board ) [ i j ]
   "Board:\n" .s
   0 -> i while i BOARD_SIZE < do
     0 -> j while j BOARD_SIZE < do
@@ -22,7 +22,7 @@
   "" .s
 ;
 
-: load_sudoku ( filename | board fp pos char )
+: load_sudoku ( filename ) [ board fp pos char ]
   filename "r" fopen -> fp
   if fp not then "Error opening file\n" .s exit end
 
@@ -33,7 +33,7 @@
   0 -> pos while pos CELL_COUNT < do
     if char 1 1 fp fread not then "Error reading file\n" .s exit end
     if char b@ ASCII_ZERO < char b@ ASCII_ZERO MAX_DIGIT + > or then
-      continue
+      next
     end
     char b@ ASCII_ZERO - board pos + b!
     pos ++ -> pos
@@ -44,7 +44,7 @@
   board
 ;
 
-: can_place ( board row col num | x y row0 col0 )
+: can_place ( board row col num ) [ x y row0 col0 ]
   0 -> x while x BOARD_SIZE < do
     if board row x CELL@ num == then
       0 ret
@@ -74,7 +74,7 @@
   1
 ;
 
-: solve_sudoku ( board pos | row col num )
+: solve_sudoku ( board pos ) [ row col num ]
   if pos CELL_COUNT == then
     1 ret
   end

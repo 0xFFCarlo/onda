@@ -1,9 +1,9 @@
-: sum_odd_to ( n | acc )
+: sum_odd_to ( n ) [ acc ]
   0 -> acc
   while n 0 > do
     if n 2 % 0 == then
       n -- -> n
-      continue
+      next
     end
     acc n + -> acc
     n -- -> n

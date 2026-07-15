@@ -1,4 +1,4 @@
-import "imports_math.onda"
+use "imports_math.onda"
 
 : main
   5 square .

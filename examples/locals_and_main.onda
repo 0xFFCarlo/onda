@@ -1,4 +1,4 @@
-: main ( | tmp )
+: main [ tmp ]
   10 -> tmp
   tmp .
   "\n" .s

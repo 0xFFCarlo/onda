@@ -20,6 +20,8 @@ typedef enum : uint8_t {
   TOKEN_SEMICOLON,  // ;
   TOKEN_LPAREN,     // (
   TOKEN_RPAREN,     // )
+  TOKEN_LBRACKET,   // [
+  TOKEN_RBRACKET,   // ]
   TOKEN_NUMBER,     // 42, -3.14
   TOKEN_STRING,     // "Mario"
   TOKEN_IDENTIFIER, // identifier

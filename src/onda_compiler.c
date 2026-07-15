@@ -248,6 +248,10 @@ void onda_token_next(onda_lexer_t* lexer, onda_token_t* t) {
     return tok1(lexer, t, TOKEN_LPAREN);
   case ')':
     return tok1(lexer, t, TOKEN_RPAREN);
+  case '[':
+    return tok1(lexer, t, TOKEN_LBRACKET);
+  case ']':
+    return tok1(lexer, t, TOKEN_RBRACKET);
   case '"': {
     int rc = lex_string(lexer, &t->start, &t->len);
     if (rc) {
@@ -477,7 +481,8 @@ static int onda_compile_expr(onda_lexer_t* lexer,
 
 static int ensure_file_symbols(onda_code_obj_t* cobj, uint32_t file_id) {
   if ((size_t)file_id >= cobj->file_symbols_capacity) {
-    size_t new_cap = cobj->file_symbols_capacity ? cobj->file_symbols_capacity : 4;
+    size_t new_cap =
+        cobj->file_symbols_capacity ? cobj->file_symbols_capacity : 4;
     while (new_cap <= (size_t)file_id)
       new_cap *= 2;
     onda_file_symbols_t* new_syms =
@@ -837,12 +842,12 @@ static const onda_imm_word_t imm_words[] = {
     {"->", .handler = onda_compile_store_local},
     {"if", .handler = onda_compile_if},
     {"while", .handler = onda_compile_while},
-    {"continue", .handler = onda_compile_continue},
+    {"next", .handler = onda_compile_continue},
     {"label", .handler = onda_compile_label},
 #if ONDA_HAS_FILESYSTEM
-    {"import", .handler = onda_compile_import},
+    {"use", .handler = onda_compile_import},
 #endif
-    {"export", .handler = onda_compile_export},
+    {"pub", .handler = onda_compile_export},
 };
 static const size_t num_imm_words = sizeof(imm_words) / sizeof(imm_words[0]);
 
@@ -1003,7 +1008,10 @@ static int onda_compile_word(onda_lexer_t* lexer,
   onda_file_symbols_t* fs = file_symbols_for(cobj, lexer->current_file_id);
   onda_dict_put(&fs->words, word.name, word.name_len, cobj->words_count);
   if (is_exported)
-    onda_dict_put(&cobj->words_map, word.name, word.name_len, cobj->words_count);
+    onda_dict_put(&cobj->words_map,
+                  word.name,
+                  word.name_len,
+                  cobj->words_count);
   onda_word_t* new_words =
       realloc(cobj->words, (cobj->words_count + 1) * sizeof(onda_word_t));
   if (!new_words) {
@@ -1017,7 +1025,6 @@ static int onda_compile_word(onda_lexer_t* lexer,
   has_scope = true;
 
   // Parse arguments if any
-  bool is_argument_section = true;
   onda_token_peek(lexer, &tok);
   if (tok.type == TOKEN_LPAREN) {
     onda_token_next(lexer, &tok); // consume '('
@@ -1026,11 +1033,6 @@ static int onda_compile_word(onda_lexer_t* lexer,
       if (tok.type == TOKEN_RPAREN) {
         onda_token_next(lexer, &tok); // consume ')'
         break;
-      } else if (tok.type == TOKEN_IDENTIFIER && tok.len == 1 &&
-                 tok.start[0] == '|') {
-        onda_token_next(lexer, &tok); // consume '|'
-        is_argument_section = false;
-        continue;
       }
       if (tok.type != TOKEN_IDENTIFIER) {
         print_err(lexer,
@@ -1054,8 +1056,42 @@ static int onda_compile_word(onda_lexer_t* lexer,
             word.name);
         goto cleanup;
       }
-      if (is_argument_section)
-        word.args_count++;
+      word.args_count++;
+    } while (true);
+  }
+
+  // Parse local variables if any
+  onda_token_peek(lexer, &tok);
+  if (tok.type == TOKEN_LBRACKET) {
+    onda_token_next(lexer, &tok); // consume '['
+    do {
+      onda_token_peek(lexer, &tok);
+      if (tok.type == TOKEN_RBRACKET) {
+        onda_token_next(lexer, &tok); // consume ']'
+        break;
+      }
+      if (tok.type != TOKEN_IDENTIFIER) {
+        print_err(lexer,
+                  "Expected word argument name in word definition for '%.*s'",
+                  (int)word.name_len,
+                  word.name);
+        goto cleanup;
+      }
+      onda_token_next(lexer, &tok); // consume local name
+      if (validate_name_availability(lexer, env, cobj, &tok, "Local", false) !=
+          0)
+        goto cleanup;
+      if (onda_scope_set(cobj, tok.start, tok.len, word.locals_count++) != 0) {
+        print_err(
+            lexer,
+            "Failed to define local variable '%.*s' in word definition for "
+            "word '%.*s' \n",
+            tok.len,
+            tok.start,
+            (int)word.name_len,
+            word.name);
+        goto cleanup;
+      }
     } while (true);
   }
 

@@ -1,4 +1,4 @@
-: main ( | ptr )
+: main [ ptr ]
   16 malloc -> ptr
   42 ptr !
   ptr @ .
