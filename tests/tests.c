@@ -165,6 +165,8 @@ static const test_case_t tests[] = {
     TEST("10 20 .stack ret", 2, 20, 10),
     // Native word consumes TOS and then falls through implicit top-level RET.
     TEST("10 .", 0, 0),
+    // .nl: ( -- ) prints one newline and keeps the stack unchanged
+    TEST(".nl ret", 0, 0),
 
     //===================
     // If condition

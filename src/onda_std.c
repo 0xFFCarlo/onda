@@ -30,14 +30,14 @@ static int64_t* onda_print_hex(int64_t* sp, size_t depth) {
 static int64_t* onda_print_ptr(int64_t* sp, size_t depth) {
   (void)depth;
   void* ptr = (void*)(uintptr_t)(*sp);
-  printf("%p\n", ptr);
+  printf("%p", ptr);
   return sp + 1;
 }
 
 static int64_t* onda_print_char(int64_t* sp, size_t depth) {
   (void)depth;
   char c = (char)(*sp);
-  printf("%c\n", c);
+  printf("%c", c);
   return sp + 1;
 }
 
@@ -46,6 +46,12 @@ static int64_t* onda_print_string(int64_t* sp, size_t depth) {
   char* str = (char*)(uintptr_t)(*sp);
   printf("%s", str);
   return sp + 1;
+}
+
+static int64_t* onda_print_newline(int64_t* sp, size_t depth) {
+  (void)depth;
+  putchar('\n');
+  return sp;
 }
 
 static int64_t* onda_stack_depth(int64_t* sp,
@@ -355,55 +361,59 @@ static int64_t* onda_assert(int64_t* sp, size_t depth) {
   return sp + 2;
 }
 
+#define ONDA_STD_FN(name, fn, args_count, returns_count)                      \
+  {                                                                           \
+      (name), sizeof(name) - 1, (fn), (args_count), (returns_count),         \
+  }
+
 static const onda_native_fn_t std_fns[] = {
-    {".", 5, onda_print_u64, 1, 0},
-    {"depth", 5, onda_stack_depth, 0, 1},
-    {".stack", 6, onda_print_stack, 0, 0},
-    {".s", 5, onda_print_string, 1, 0},
-    {".c", 5, onda_print_char, 1, 0},
-    {"print_u64", 5, onda_print_u64, 1, 0},
-    {"print_i64", 9, onda_print_i64, 1, 0},
-    {"print_hex", 9, onda_print_hex, 1, 0},
-    {"print_ptr", 9, onda_print_ptr, 1, 0},
-    {"print_char", 10, onda_print_char, 1, 0},
-    {"print_str", 9, onda_print_string, 1, 0},
-    {"emit", 4, onda_print_char, 1, 0},
-    {"malloc", 6, onda_malloc, 1, 1},
-    {"calloc", 6, onda_calloc, 2, 1},
-    {"free", 4, onda_free, 1, 0},
-    {"realloc", 7, onda_realloc, 2, 1},
-    {"memcpy", 6, onda_memcpy, 3, 0},
-    {"memset", 6, onda_memset, 3, 0},
-    {"memcmp", 6, onda_memcmp, 3, 1},
-    {"strlen", 6, onda_strlen, 1, 1},
-    {"strcmp", 6, onda_strcmp, 2, 1},
-    {"strncmp", 7, onda_strncmp, 3, 1},
-    {"strcpy", 6, onda_strcpy, 2, 0},
-    {"strncpy", 7, onda_strncpy, 3, 0},
-    {"strcat", 6, onda_strcat, 2, 0},
-    {"strncat", 7, onda_strncat, 3, 0},
-    {"strchr", 6, onda_strchr, 2, 1},
-    {"strstr", 6, onda_strstr, 2, 1},
-    {"atoi", 4, onda_atoi, 1, 1},
-    {"strtol", 6, onda_strtol, 2, 1},
-    {"strtoul", 7, onda_strtoul, 2, 1},
-    {"fopen", 5, onda_fopen, 2, 1},
-    {"tmpfile", 7, onda_tmpfile, 0, 1},
-    {"fclose", 6, onda_fclose, 1, 1},
-    {"fread", 5, onda_fread, 4, 1},
-    {"fwrite", 6, onda_fwrite, 4, 1},
-    {"fseek", 5, onda_fseek, 3, 1},
-    {"ftell", 5, onda_ftell, 1, 1},
-    {"fflush", 6, onda_fflush, 1, 1},
-    {"feof", 4, onda_feof, 1, 1},
-    {"ferror", 6, onda_ferror, 1, 1},
-    {"rewind", 6, onda_rewind, 1, 0},
-    {"clearerr", 8, onda_clearerr, 1, 0},
-    {"remove", 6, onda_remove, 1, 1},
-    {"rename", 6, onda_rename, 2, 1},
-    {"exit", 4, onda_exit, 1, 0},
-    {"assert", 6, onda_assert, 2, 0},
+    ONDA_STD_FN(".", onda_print_u64, 1, 0),
+    ONDA_STD_FN("depth", onda_stack_depth, 0, 1),
+    ONDA_STD_FN(".stack", onda_print_stack, 0, 0),
+    ONDA_STD_FN(".s", onda_print_string, 1, 0),
+    ONDA_STD_FN(".nl", onda_print_newline, 0, 0),
+    ONDA_STD_FN(".c", onda_print_char, 1, 0),
+    ONDA_STD_FN(".-", onda_print_i64, 1, 0),
+    ONDA_STD_FN(".h", onda_print_hex, 1, 0),
+    ONDA_STD_FN(".p", onda_print_ptr, 1, 0),
+    ONDA_STD_FN("malloc", onda_malloc, 1, 1),
+    ONDA_STD_FN("calloc", onda_calloc, 2, 1),
+    ONDA_STD_FN("free", onda_free, 1, 0),
+    ONDA_STD_FN("realloc", onda_realloc, 2, 1),
+    ONDA_STD_FN("memcpy", onda_memcpy, 3, 0),
+    ONDA_STD_FN("memset", onda_memset, 3, 0),
+    ONDA_STD_FN("memcmp", onda_memcmp, 3, 1),
+    ONDA_STD_FN("strlen", onda_strlen, 1, 1),
+    ONDA_STD_FN("strcmp", onda_strcmp, 2, 1),
+    ONDA_STD_FN("strncmp", onda_strncmp, 3, 1),
+    ONDA_STD_FN("strcpy", onda_strcpy, 2, 0),
+    ONDA_STD_FN("strncpy", onda_strncpy, 3, 0),
+    ONDA_STD_FN("strcat", onda_strcat, 2, 0),
+    ONDA_STD_FN("strncat", onda_strncat, 3, 0),
+    ONDA_STD_FN("strchr", onda_strchr, 2, 1),
+    ONDA_STD_FN("strstr", onda_strstr, 2, 1),
+    ONDA_STD_FN("atoi", onda_atoi, 1, 1),
+    ONDA_STD_FN("strtol", onda_strtol, 2, 1),
+    ONDA_STD_FN("strtoul", onda_strtoul, 2, 1),
+    ONDA_STD_FN("fopen", onda_fopen, 2, 1),
+    ONDA_STD_FN("tmpfile", onda_tmpfile, 0, 1),
+    ONDA_STD_FN("fclose", onda_fclose, 1, 1),
+    ONDA_STD_FN("fread", onda_fread, 4, 1),
+    ONDA_STD_FN("fwrite", onda_fwrite, 4, 1),
+    ONDA_STD_FN("fseek", onda_fseek, 3, 1),
+    ONDA_STD_FN("ftell", onda_ftell, 1, 1),
+    ONDA_STD_FN("fflush", onda_fflush, 1, 1),
+    ONDA_STD_FN("feof", onda_feof, 1, 1),
+    ONDA_STD_FN("ferror", onda_ferror, 1, 1),
+    ONDA_STD_FN("rewind", onda_rewind, 1, 0),
+    ONDA_STD_FN("clearerr", onda_clearerr, 1, 0),
+    ONDA_STD_FN("remove", onda_remove, 1, 1),
+    ONDA_STD_FN("rename", onda_rename, 2, 1),
+    ONDA_STD_FN("exit", onda_exit, 1, 0),
+    ONDA_STD_FN("assert", onda_assert, 2, 0),
 };
+
+#undef ONDA_STD_FN
 
 int onda_env_register_std(onda_env_t* env) {
   for (size_t i = 0; i < sizeof(std_fns) / sizeof(onda_native_fn_t); i++) {

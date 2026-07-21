@@ -1036,7 +1036,7 @@ static int onda_compile_word(onda_lexer_t* lexer,
       }
       if (tok.type != TOKEN_IDENTIFIER) {
         print_err(lexer,
-                  "Expected word argument name in word definition for '%.*s'",
+                  "Expected word argument name in word definition for '%.*s'\n",
                   (int)word.name_len,
                   word.name);
         goto cleanup;
@@ -1072,7 +1072,7 @@ static int onda_compile_word(onda_lexer_t* lexer,
       }
       if (tok.type != TOKEN_IDENTIFIER) {
         print_err(lexer,
-                  "Expected word argument name in word definition for '%.*s'",
+                  "Expected word argument name in word definition for '%.*s'\n",
                   (int)word.name_len,
                   word.name);
         goto cleanup;
