@@ -1,0 +1,19 @@
+# Macros defined with `::` are expanded inline at every call site.
+# They cannot declare their own `( args )` or `[ locals ]`, so a macro
+# body only ever sees whatever the *caller* has on the stack or in scope.
+
+:: TAX_RATE 20 ;
+:: DOUBLE dup + ;
+:: QUADRUPLE DOUBLE DOUBLE ;
+
+:: with_tax dup TAX_RATE * 100 / + ;
+
+: main [ price ]
+  50 -> price
+
+  price with_tax .
+  " <- 50 plus 20% tax\n" .s
+
+  3 QUADRUPLE .
+  " <- 3 doubled twice\n" .s
+;

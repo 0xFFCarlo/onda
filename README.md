@@ -113,6 +113,8 @@ Recommended first runs:
 - `./bin/ondac run examples/stack_basics.onda`
 - `./bin/ondac run examples/locals_and_main.onda`
 - `./bin/ondac run examples/control_flow.onda`
+- `./bin/ondac run examples/operators_and_comments.onda`
+- `./bin/ondac run examples/macros_basics.onda`
 
 Advanced demos:
 - `./bin/ondac run examples/run_fibonacci.onda`

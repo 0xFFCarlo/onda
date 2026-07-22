@@ -183,7 +183,113 @@ Run:
 ./bin/ondac run examples/control_flow.onda
 ```
 
-## 6. Modules and Multi-file Programs
+## 6. Operators and Comments
+
+Section 2 covered `+` and `dup`. Here is the rest of the operator set, plus
+comments and alternate number literals.
+
+File: `examples/operators_and_comments.onda`
+
+```onda
+# Lines starting with '#' are comments.
+# Numbers can also be written in hex (0x..) or binary (0b..).
+
+: main
+  0xff 0b1010 & .    # bitwise AND: 255 & 10 = 10
+  " <- 0xff & 0b1010\n" .s
+
+  1 4 << .           # shift left: 1 << 4 = 16
+  " <- 1 << 4\n" .s
+
+  5 3 >= .           # comparisons push 1 (true) or 0 (false)
+  " <- 5 >= 3\n" .s
+
+  1 1 == 0 1 == or . # logical or: true or false = 1
+  " <- (1==1) or (0==1)\n" .s
+
+  1 2 3 rot          # rot moves top-of-stack down to third place: 1 2 3 -> 2 1 3
+  . " " .s . " " .s .
+  " <- 1 2 3 rot\n" .s
+;
+```
+
+Full operator reference:
+- Arithmetic: `+ - * / % ++ --`
+- Bitwise: `& | ^ ~ << >>`
+- Comparison: `== != < <= > >=` (push `1` for true, `0` for false)
+- Logical: `and or not`
+- Stack shuffling: `dup drop swap over rot`
+
+Run:
+
+```bash
+./bin/ondac run examples/operators_and_comments.onda
+```
+
+## 7. Macros: `::`
+
+`::` defines a macro (Onda calls it an alias): its body is expanded inline at
+every call site instead of being compiled as a callable word. That makes it
+useful for named constants and for small snippets that should carry zero call
+overhead.
+
+File: `examples/macros_basics.onda`
+
+```onda
+# Macros defined with `::` are expanded inline at every call site.
+# They cannot declare their own `( args )` or `[ locals ]`, so a macro
+# body only ever sees whatever the *caller* has on the stack or in scope.
+
+:: TAX_RATE 20 ;
+:: DOUBLE dup + ;
+:: QUADRUPLE DOUBLE DOUBLE ;
+
+:: with_tax dup TAX_RATE * 100 / + ;
+
+: main [ price ]
+  50 -> price
+
+  price with_tax .
+  " <- 50 plus 20% tax\n" .s
+
+  3 QUADRUPLE .
+  " <- 3 doubled twice\n" .s
+;
+```
+
+Step by step:
+1. `:: TAX_RATE 20 ;` defines a constant-style macro: every use of `TAX_RATE`
+   expands to `20`.
+2. `:: DOUBLE dup + ;` defines a code-style macro; `QUADRUPLE` expands to
+   `DOUBLE DOUBLE`, which itself expands to `dup + dup +`.
+3. `with_tax` uses `TAX_RATE` and operates directly on whatever value the
+   caller left on the stack — it has no locals of its own.
+4. In `main`, `price with_tax` and `3 QUADRUPLE` compile as if their bodies
+   were pasted in directly.
+
+Rules and restrictions:
+- A macro cannot declare `( args )` or `[ locals ]`.
+- A macro body is expanded textually, so it can only read/write the caller's
+  stack and the caller's own locals (by name, if the caller happens to have
+  one with a matching name).
+- Macros can call other macros; expansion depth is capped to catch infinite
+  recursion.
+- `pub ::name ... ;` exports a macro the same way `pub :name ... ;` exports a
+  word.
+
+When to reach for a macro instead of a word:
+- Small named constants (`TAX_RATE`, `BOARD_SIZE`).
+- Tiny snippets used in hot loops where you want to avoid `call`/`ret`
+  overhead (see `examples/sudoku_solver.onda` and
+  `examples/labels_and_jump_dispatch.onda` for real uses).
+
+Run:
+
+```bash
+./bin/ondac run examples/macros_basics.onda
+```
+
+## 8. Modules and Multi-file Programs
 
 Once a word is useful, move it to a separate file and pull it in with `use`.
 Words are private by default, so a word must be marked `pub` before another
@@ -230,7 +336,7 @@ Run:
 ./bin/ondac run examples/imports_main.onda
 ```
 
-## 7. Memory Basics
+## 9. Memory Basics
 
 Onda stays low-level when you need it. This example shows explicit allocation,
 store/load, and free.
@@ -264,7 +370,7 @@ Run:
 ./bin/ondac run examples/memory_basics.onda
 ```
 
-## 8. File I/O Basics
+## 10. File I/O Basics
 
 This is the same explicit style, now applied to I/O: open, check, write,
 close.
@@ -299,7 +405,7 @@ Run:
 ./bin/ondac run examples/file_io_basics.onda
 ```
 
-## 9. Computed Control Flow: `label` and `jump`
+## 11. Computed Control Flow: `label` and `jump`
 
 Onda supports computed jumps through label addresses. In the current compiler,
 labels are resolved backward-only, so jump targets must be declared earlier in
@@ -334,7 +440,34 @@ Practical notes:
 - In current Onda, labels must be referenced after declaration.
 - Use `if`/`while` for everyday flow, and `jump` for low-level control.
 
-## 10. Advanced Demos
+## 12. Standard Library Quick Reference
+
+Beyond `malloc`/`free` and `fopen`/`fwrite`/`fclose`, Onda's C-backed stdlib
+covers the rest of the usual low-level toolkit. All of it is called like any
+other word — push arguments, call the name, results come back on the stack.
+
+Printing:
+- `.` prints an integer, `.h` prints hex, `.c` prints a byte as a char.
+- `.s` prints a string, `.nl` prints a newline, `.p` prints a raw pointer.
+- `depth` pushes the current stack depth, `.stack` prints the whole stack.
+
+Memory:
+- `malloc calloc realloc free`
+- `memcpy memset memcmp`
+
+Strings:
+- `strlen strcmp strncmp strcpy strncpy strcat strncat strchr strstr`
+- `atoi strtol strtoul` parse numbers out of strings.
+
+Files:
+- `fopen fclose fread fwrite fseek ftell fflush feof ferror rewind clearerr`
+- `remove rename tmpfile`
+
+Misc:
+- `exit` ends the process with the given status code.
+- `assert` checks a condition and aborts with a message if it fails.
+
+## 13. Advanced Demos
 
 After the core path, use these to study recursion depth, larger control flow,
 and performance behavior.
@@ -350,7 +483,7 @@ Run examples:
 ./bin/ondac run examples/sudoku_solver.onda
 ```
 
-## 11. Build, Bytecode, and Execution Modes
+## 14. Build, Bytecode, and Execution Modes
 
 You can run source directly for fast iteration, then switch to bytecode when
 you want a build artifact.
