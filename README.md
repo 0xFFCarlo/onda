@@ -23,13 +23,13 @@ currently fit in roughly 4-5k lines of code.
 ## First Look
 
 ```onda
-: main "hello, onda\n" .s ;
+"hello, onda\n" .s
 ```
 
 Run it:
 
 ```bash
-./bin/ondac run -e ': main "hello, onda\n" .s ;'
+./bin/ondac run -e '"hello, onda\n" .s'
 ```
 
 What this project is aiming for:
@@ -67,12 +67,12 @@ Build bytecode + execute it:
 ## Language Taste
 
 ```onda
-: sum_odd_to ( n | acc )
+: sum_odd_to ( n ) [ acc ]
   0 -> acc
   while n 0 > do
     if n 2 % 0 == then
       n -- -> n
-      continue
+      next
     end
     acc n + -> acc
     n -- -> n
@@ -80,7 +80,7 @@ Build bytecode + execute it:
   acc
 ;
 
-: main 10 sum_odd_to . "\n" .s ;
+: main 10 sum_odd_to . .nl ;
 ```
 
 ## CLI

@@ -72,7 +72,7 @@ shows Onda's readability pattern: named arguments plus named temporaries.
 File: `examples/words_and_args.onda`
 
 ```onda
-: hypot2 ( a b | aa bb )
+: hypot2 ( a b ) [ aa bb ]
   a a * -> aa
   b b * -> bb
   aa bb +
@@ -85,9 +85,9 @@ File: `examples/words_and_args.onda`
 ```
 
 Step by step (`hypot2`):
-1. Signature `( a b | aa bb )` declares:
-   - arguments: `a`, `b`
-   - local temporaries: `aa`, `bb`
+1. Signature `( a b ) [ aa bb ]` declares:
+   - arguments: `a`, `b`, in `( )`
+   - local temporaries: `aa`, `bb`, in `[ ]`
 2. `a a *` loads `a` twice and computes `a²`.
 3. `-> aa` stores that result into local `aa`.
 4. `b b * -> bb` computes `b²` and stores in `bb`.
@@ -116,7 +116,7 @@ readable, especially in bigger scripts.
 File: `examples/locals_and_main.onda`
 
 ```onda
-: main ( | tmp )
+: main [ tmp ]
   10 -> tmp
   tmp .
   "\n" .s
@@ -124,7 +124,7 @@ File: `examples/locals_and_main.onda`
 ```
 
 Step by step:
-1. `( | tmp )` declares local `tmp` with no arguments.
+1. `[ tmp ]` declares local `tmp`, with no arguments needed since `( )` is omitted.
 2. `10` pushes `10`.
 3. `-> tmp` stores top-of-stack into `tmp`.
 4. `tmp` loads value back to stack.
@@ -140,7 +140,7 @@ Run:
 ./bin/ondac run examples/locals_and_main.onda
 ```
 
-## 5. Control Flow: `if`, `while`, `continue`
+## 5. Control Flow: `if`, `while`, `next`
 
 With naming in place, control flow reads like a direct algorithm. This example
 sums odd numbers down from `n`.
@@ -148,12 +148,12 @@ sums odd numbers down from `n`.
 File: `examples/control_flow.onda`
 
 ```onda
-: sum_odd_to ( n | acc )
+: sum_odd_to ( n ) [ acc ]
   0 -> acc
   while n 0 > do
     if n 2 % 0 == then
       n -- -> n
-      continue
+      next
     end
     acc n + -> acc
     n -- -> n
@@ -171,7 +171,7 @@ Step by step (`sum_odd_to`):
 1. Initialize accumulator: `0 -> acc`.
 2. Loop while `n > 0`.
 3. Check `n 2 % 0 ==` to detect even numbers.
-4. If even, decrement `n` and `continue`.
+4. If even, decrement `n` and `next` (skip to the next loop iteration).
 5. If odd, add `n` into `acc`, then decrement `n`.
 6. After loop, return `acc`.
 
@@ -183,10 +183,11 @@ Run:
 ./bin/ondac run examples/control_flow.onda
 ```
 
-## 6. Imports and Multi-file Programs
+## 6. Modules and Multi-file Programs
 
-Once a word is useful, move it to a separate file and import it. That gives
-you reuse without changing the language model.
+Once a word is useful, move it to a separate file and pull it in with `use`.
+Words are private by default, so a word must be marked `pub` before another
+file can call it.
 
 Files:
 - `examples/imports_math.onda`
@@ -195,14 +196,14 @@ Files:
 `imports_math.onda`:
 
 ```onda
-: square ( n ) n n * ;
-: cube ( n ) n square n * ;
+pub : square ( n ) n n * ;
+pub : cube ( n ) n square n * ;
 ```
 
 `imports_main.onda`:
 
 ```onda
-import "imports_math.onda"
+use "imports_math.onda"
 
 : main
   5 square .
@@ -213,14 +214,15 @@ import "imports_math.onda"
 ```
 
 Step by step:
-1. `import "imports_math.onda"` makes `square` and `cube` available.
-2. `5 square` computes `25`.
-3. `3 cube` computes `27`.
-4. Program prints `25 27`.
+1. `use "imports_math.onda"` makes `square` and `cube` available.
+2. `pub` on their definitions is what allows them to be visible outside their file.
+3. `5 square` computes `25`.
+4. `3 cube` computes `27`.
+5. Program prints `25 27`.
 
 Notes:
-- Import paths are relative to the current file.
-- Import cycles are rejected.
+- `use` paths are relative to the current file.
+- `use` cycles are rejected.
 
 Run:
 
@@ -236,7 +238,7 @@ store/load, and free.
 File: `examples/memory_basics.onda`
 
 ```onda
-: main ( | ptr )
+: main [ ptr ]
   16 malloc -> ptr
   42 ptr !
   ptr @ .
@@ -270,7 +272,7 @@ close.
 File: `examples/file_io_basics.onda`
 
 ```onda
-: main ( | fp )
+: main [ fp ]
   "/tmp/onda_example.txt" "w" fopen -> fp
   if fp not then
     "failed to open file\n" .s
@@ -304,7 +306,7 @@ labels are resolved backward-only, so jump targets must be declared earlier in
 the same word.
 
 ```onda
-: count_down_with_jump ( n | i )
+: count_down_with_jump ( n ) [ i ]
   n -> i
 
   label loop
